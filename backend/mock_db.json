@@ -1,0 +1,98 @@
+{
+  "roles": [
+    {
+      "id": "role-admin-1111",
+      "name": "Admin",
+      "description": "System Administrator with full access rights",
+      "permissions": [
+        "users:read",
+        "users:write",
+        "roles:read",
+        "roles:write",
+        "tickets:read",
+        "tickets:write",
+        "tickets:delete",
+        "settings:read",
+        "settings:write"
+      ]
+    },
+    {
+      "id": "role-manager-2222",
+      "name": "Manager",
+      "description": "Support Manager oversight",
+      "permissions": [
+        "users:read",
+        "tickets:read",
+        "tickets:write",
+        "tickets:assign",
+        "analytics:read"
+      ]
+    },
+    {
+      "id": "role-lead-3333",
+      "name": "Team Lead",
+      "description": "Support Team Lead",
+      "permissions": [
+        "users:read",
+        "tickets:read",
+        "tickets:write",
+        "tickets:assign",
+        "analytics:read"
+      ]
+    },
+    {
+      "id": "role-engineer-4444",
+      "name": "Support Engineer",
+      "description": "Support Engineer resolver",
+      "permissions": [
+        "tickets:read",
+        "tickets:write",
+        "tickets:resolve"
+      ]
+    },
+    {
+      "id": "role-client-5555",
+      "name": "Client",
+      "description": "End customer submitting tickets",
+      "permissions": [
+        "tickets:create",
+        "tickets:read",
+        "tickets:comment"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "id": "user-admin-9999",
+      "name": "Administrator",
+      "email": "admin@desk.com",
+      "password_hash": "$2b$10$gW0ByTXQmlGGRX92vrgXjOOA4tRTfFKiZjOa85v2diT2DDXEfCs5m",
+      "role_id": "role-admin-1111",
+      "is_active": true,
+      "created_at": "2026-06-25T09:03:12.527Z",
+      "updated_at": "2026-06-25T09:03:12.534Z"
+    },
+    {
+      "id": "user-3ff6a375f717b6d6",
+      "name": "John Senior Auditor",
+      "email": "john.senior@desk.com.deleted_1782981068611",
+      "password_hash": "dummyhash123",
+      "role_id": "role-e1b190a6ecfa15f5",
+      "is_active": false,
+      "status": "Inactive",
+      "deleted_at": "2026-07-02T08:31:08.611Z",
+      "created_at": "2026-07-02T08:31:08.604Z",
+      "updated_at": "2026-07-02T08:31:08.611Z"
+    }
+  ],
+  "refresh_tokens": [
+    {
+      "id": "token-a34b6d46c12e9093",
+      "user_id": "user-admin-9999",
+      "token": "6b61126e7af8d150e2b4d0bc664ed8a5c9ae56241010bff1201c8dc176cb1abf0da254909de2f1fc",
+      "expires_at": "2026-07-02T09:05:42.683Z",
+      "created_at": "2026-06-25T09:05:42.686Z"
+    }
+  ],
+  "password_resets": []
+}
