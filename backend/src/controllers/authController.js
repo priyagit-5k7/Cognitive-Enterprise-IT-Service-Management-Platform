@@ -73,6 +73,15 @@ const AuthController = {
       });
     } catch (err) {
       console.error('Registration error:', err);
+      if (
+        err.code === 'ECONNREFUSED' ||
+        err.message?.includes('connect ECONNREFUSED') ||
+        err.message?.includes('Missing production database configuration')
+      ) {
+        return res.status(503).json({
+          message: 'Database service is currently unreachable or not configured. Please ensure DATABASE_URL is set in Vercel project environment variables.'
+        });
+      }
       res.status(500).json({ message: 'Internal server error' });
     }
   },
@@ -120,6 +129,15 @@ const AuthController = {
       });
     } catch (err) {
       console.error('Login error:', err);
+      if (
+        err.code === 'ECONNREFUSED' ||
+        err.message?.includes('connect ECONNREFUSED') ||
+        err.message?.includes('Missing production database configuration')
+      ) {
+        return res.status(503).json({
+          message: 'Database service is currently unreachable or not configured. Please ensure DATABASE_URL is set in Vercel project environment variables.'
+        });
+      }
       res.status(500).json({ message: 'Internal server error' });
     }
   },

@@ -6,8 +6,7 @@ import {
 } from 'recharts';
 import { BarChart2, TrendingUp, CheckCircle, AlertTriangle, Clock, Users, Download, RefreshCw, Filter } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
+import { API_BASE } from '../config';
 
 const COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#3B82F6', '#8B5CF6', '#06B6D4'];
 

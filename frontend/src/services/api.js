@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000/api/v1';
+import { API_BASE } from '../config';
+import { parseResponse } from '../utils/parseResponse';
 
 const request = async (endpoint, options = {}) => {
   const token = localStorage.getItem('token');
@@ -13,24 +14,13 @@ const request = async (endpoint, options = {}) => {
     headers,
   });
 
-  if (!response.ok) {
-    const err = new Error('API Request Failed');
-    try {
-      const data = await response.json();
-      err.response = { data };
-    } catch {
-      err.response = { data: { message: response.statusText } };
-    }
+  try {
+    const data = await parseResponse(response, 'API Request Failed');
+    return { data };
+  } catch (err) {
+    err.response = { data: err.data || { message: err.message } };
     throw err;
   }
-
-  // Handle 204 No Content
-  if (response.status === 204) {
-    return { data: {} };
-  }
-
-  const data = await response.json();
-  return { data };
 };
 
 const api = {

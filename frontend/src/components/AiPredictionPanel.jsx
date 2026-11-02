@@ -16,7 +16,7 @@ import ExplainableAiWidget from './ExplainableAiWidget';
  *   ticketId  - UUID of the ticket
  *   userRole  - current user's role name
  */
-const AiPredictionPanel = ({ ticketId, userRole }) => {
+const AiPredictionPanel = ({ ticketId, userRole, onAssignEngineer }) => {
   const { authFetch, API_BASE, hasPermission } = useContext(AuthContext);
   const navigate = useNavigate();
 
@@ -175,8 +175,91 @@ const AiPredictionPanel = ({ ticketId, userRole }) => {
                 </div>
               </div>
 
-              {/* Recommended Engineer */}
-              {prediction.recommended_engineer_name && (
+              {/* Recommended Engineers (Multiple candidates ranked by specialization & workload) */}
+              {prediction.recommendations && prediction.recommendations.length > 0 ? (
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Users size={13} color="#6366F1" /> Recommended Engineers
+                    </span>
+                    <span style={{ fontSize: '10px', color: '#6366F1', background: 'rgba(99, 102, 241, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                      AI Ranked
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {prediction.recommendations.slice(0, 3).map((rec, idx) => (
+                      <div
+                        key={rec.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          background: idx === 0 ? 'rgba(99, 102, 241, 0.08)' : 'var(--bg-hover)',
+                          border: `1px solid ${idx === 0 ? 'rgba(99, 102, 241, 0.3)' : 'var(--border-color)'}`
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                          <div style={{
+                            width: '30px',
+                            height: '30px',
+                            borderRadius: '50%',
+                            background: idx === 0 ? '#6366F1' : 'var(--border-color)',
+                            color: '#FFFFFF',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            flexShrink: 0
+                          }}>
+                            {rec.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {rec.name}
+                              </p>
+                              {idx === 0 && (
+                                <span style={{ fontSize: '9px', fontWeight: 700, color: '#10B981', background: 'rgba(16, 185, 129, 0.1)', padding: '1px 5px', borderRadius: '4px' }}>
+                                  Top Pick
+                                </span>
+                              )}
+                            </div>
+                            <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-muted)' }}>
+                              {rec.specialization} • <strong style={{ color: 'var(--text-main)' }}>{rec.openTickets}</strong> open
+                            </p>
+                          </div>
+                        </div>
+
+                        {onAssignEngineer && ['Admin', 'Manager', 'Team Lead'].includes(userRole) && (
+                          <button
+                            type="button"
+                            onClick={() => onAssignEngineer(rec.id)}
+                            style={{
+                              padding: '5px 10px',
+                              borderRadius: '6px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              background: idx === 0 ? '#6366F1' : 'transparent',
+                              color: idx === 0 ? '#FFFFFF' : 'var(--text-main)',
+                              border: `1px solid ${idx === 0 ? '#6366F1' : 'var(--border-color)'}`,
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                              marginLeft: '8px',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            Assign
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : prediction.recommended_engineer_name ? (
                 <div style={styles.engineerBlock}>
                   <div style={styles.engineerLeft}>
                     <div style={styles.engineerAvatar}>
@@ -189,7 +272,7 @@ const AiPredictionPanel = ({ ticketId, userRole }) => {
                   </div>
                   <Users size={16} color="#6366F1" />
                 </div>
-              )}
+              ) : null}
 
               {/* Suggested Resolution */}
               {prediction.suggested_resolution && (

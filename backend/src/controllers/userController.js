@@ -48,7 +48,7 @@ const UserController = {
 
   async createUser(req, res) {
     try {
-      const { name, email, password, roleId, status = 'Active' } = req.body;
+      const { name, email, password, roleId, status = 'Active', specialization, department } = req.body;
 
       if (!name || !email || !password || !roleId) {
         return res.status(400).json({ message: 'All fields (name, email, password, roleId) are required' });
@@ -66,7 +66,7 @@ const UserController = {
         return res.status(400).json({ message: 'Invalid role ID' });
       }
 
-      // Privilege Escalation Check: Only Admins can create Admin accounts
+      // Privilege Escalation Check: Only Admins can assign the Admin role
       if (role.name === 'Admin' && req.user.role_name !== 'Admin') {
         return res.status(403).json({ message: 'Privilege Escalation: Only administrators can assign the Admin role.' });
       }
@@ -80,7 +80,9 @@ const UserController = {
         email,
         passwordHash,
         roleId,
-        status
+        status,
+        specialization: specialization || null,
+        department: department || null
       });
 
       res.status(201).json({
@@ -96,7 +98,7 @@ const UserController = {
   async updateUser(req, res) {
     try {
       const { id } = req.params;
-      const { name, email, roleId, status } = req.body;
+      const { name, email, roleId, status, specialization, department } = req.body;
 
       if (!name || !email || !roleId || !status) {
         return res.status(400).json({ message: 'All fields (name, email, roleId, status) are required' });
@@ -140,6 +142,8 @@ const UserController = {
         email,
         roleId,
         status,
+        specialization: specialization !== undefined ? specialization : user.specialization,
+        department: department !== undefined ? department : user.department
       });
 
       res.json({

@@ -9,14 +9,13 @@ const TicketController = {
   // GET /api/v1/tickets
   async getAllTickets(req, res) {
     try {
-      const { search, status, priority, type, category, assigneeId, sortBy, sortOrder, page, limit } = req.query;
+      const { search, status, priority, category, assigneeId, sortBy, sortOrder, page, limit } = req.query;
       const { id: currentUserId, role_name } = req.user;
 
       const filterOptions = {
         search,
         status,
         priority,
-        type,
         category,
         assigneeId,
         sortBy,
@@ -27,7 +26,7 @@ const TicketController = {
 
       // Client users can ONLY view their own tickets
       if (role_name === 'Client') {
-        filterOptions.clientId = currentUserId;
+        filterOptions.createdBy = currentUserId;
       }
 
       const result = await TicketModel.getAll(filterOptions);
@@ -59,7 +58,7 @@ const TicketController = {
       }
 
       // Security check: Clients can only access their own tickets
-      if (role_name === 'Client' && ticket.client_id !== currentUserId) {
+      if (role_name === 'Client' && ticket.created_by !== currentUserId) {
         return res.status(403).json({ message: 'Access denied: You can only view your own tickets' });
       }
 
@@ -78,16 +77,30 @@ const TicketController = {
   // POST /api/v1/tickets
   async createTicket(req, res) {
     try {
-      const { title, description, type, category, priority } = req.body;
+      const { title, description, category_id, category, priority } = req.body;
       const { id: currentUserId } = req.user;
 
-      if (!title || !description || !type) {
-        return res.status(400).json({ message: 'Title, description, and type are required' });
+      if (!title || !description) {
+        return res.status(400).json({ message: 'Title and description are required' });
       }
 
-      const validTypes = ['Incident', 'Service Request', 'Problem', 'Change Request'];
-      if (!validTypes.includes(type)) {
-        return res.status(400).json({ message: `Invalid type. Must be one of: ${validTypes.join(', ')}` });
+      // Resolve category_id: accept either a UUID directly or a category name string
+      let resolvedCategoryId = category_id || null;
+      if (!resolvedCategoryId) {
+        const db = require('../config/db');
+        // If category name provided, look it up; otherwise use the first available category
+        const catQuery = category
+          ? 'SELECT id FROM ticket_categories WHERE LOWER(name) = LOWER($1) LIMIT 1'
+          : 'SELECT id FROM ticket_categories ORDER BY name LIMIT 1';
+        const catParams = category ? [category] : [];
+        const catResult = await db.query(catQuery, catParams);
+        if (catResult.rows.length > 0) {
+          resolvedCategoryId = catResult.rows[0].id;
+        } else {
+          // Last resort: any category
+          const anyResult = await db.query('SELECT id FROM ticket_categories LIMIT 1');
+          resolvedCategoryId = anyResult.rows[0]?.id || null;
+        }
       }
 
       // Calculate SLA due date
@@ -96,10 +109,9 @@ const TicketController = {
       const ticket = await TicketModel.create({
         title,
         description,
-        type,
-        category,
+        category_id: resolvedCategoryId,
         priority,
-        client_id: currentUserId,
+        created_by: currentUserId,
         sla_due_date
       });
 
@@ -157,7 +169,7 @@ const TicketController = {
   async updateTicket(req, res) {
     try {
       const { id } = req.params;
-      const { status, priority, category, assignee_id } = req.body;
+      const { status, priority, category_id, assigned_to } = req.body;
       const { id: currentUserId, role_name, name: currentUserName } = req.user;
 
       // Restrict ticket metadata updates to staff roles
@@ -175,13 +187,10 @@ const TicketController = {
       const changeLogs = [];
 
       // Validate and log Category updates
-      if (category !== undefined && category !== ticket.category) {
-        const validCategories = ['Hardware', 'Software', 'Network', 'Access', 'Billing', 'Other'];
-        if (!validCategories.includes(category)) {
-          return res.status(400).json({ message: `Invalid category. Must be one of: ${validCategories.join(', ')}` });
-        }
-        updates.category = category;
-        changeLogs.push(`Category updated from "${ticket.category}" to "${category}"`);
+      if (category_id !== undefined && category_id !== ticket.category_id) {
+        updates.category_id = category_id;
+        const prevCat = ticket.category_name || 'None';
+        changeLogs.push(`Category updated from "${prevCat}" to new category`);
       }
 
       // Validate and log Priority updates
@@ -196,17 +205,17 @@ const TicketController = {
       }
 
       // Validate and log Assignee updates
-      if (assignee_id !== undefined && assignee_id !== ticket.assignee_id) {
+      if (assigned_to !== undefined && assigned_to !== ticket.assigned_to) {
         let assigneeName = 'Unassigned';
-        if (assignee_id) {
-          const assigneeUser = await UserModel.findById(assignee_id);
+        if (assigned_to) {
+          const assigneeUser = await UserModel.findById(assigned_to);
           if (!assigneeUser) {
             return res.status(400).json({ message: 'Invalid assignee ID' });
           }
           assigneeName = assigneeUser.name;
         }
-        updates.assignee_id = assignee_id;
-        const prevAssigneeName = ticket.assignee_name || 'Unassigned';
+        updates.assigned_to = assigned_to;
+        const prevAssigneeName = ticket.assigned_to_name || 'Unassigned';
         changeLogs.push(`Assignee changed from "${prevAssigneeName}" to "${assigneeName}"`);
       }
 
@@ -215,27 +224,27 @@ const TicketController = {
 
       // If status is not explicitly passed, apply automatic transitions
       if (!nextStatus) {
-        if (updates.category && ticket.status === 'Created') {
-          nextStatus = 'Categorized';
-        } else if (updates.priority && (ticket.status === 'Created' || ticket.status === 'Categorized')) {
-          nextStatus = 'Prioritized';
-        } else if (updates.assignee_id && (ticket.status === 'Created' || ticket.status === 'Categorized' || ticket.status === 'Prioritized')) {
-          nextStatus = 'Assigned';
+        if (updates.category_id && ticket.status === 'Open') {
+          nextStatus = 'Open'; // category update doesn't auto-transition
+        } else if (updates.assigned_to && (ticket.status === 'Open' || ticket.status === 'In Progress')) {
+          nextStatus = 'In Progress';
         }
       }
 
       if (nextStatus && nextStatus !== ticket.status) {
-        const validStatuses = ['Created', 'Categorized', 'Prioritized', 'Assigned', 'In Progress', 'Resolved', 'Closed'];
+        const validStatuses = ['Open', 'In Progress', 'Resolved', 'Closed'];
         if (!validStatuses.includes(nextStatus)) {
           return res.status(400).json({ message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
         }
 
         // Restrict resolution
-        if (nextStatus === 'Resolved' && role_name === 'Support Engineer' && ticket.assignee_id !== currentUserId) {
-          // Allow Team Leads, Managers, Admins, or assigned Engineer
+        if (nextStatus === 'Resolved' && role_name === 'Support Engineer' && ticket.assigned_to !== currentUserId) {
           return res.status(403).json({ message: 'Access denied: Only the assigned Support Engineer or Team Leads/Managers can resolve this ticket.' });
         }
 
+        if (nextStatus === 'Closed') {
+          updates.closed_at = new Date().toISOString();
+        }
         updates.status = nextStatus;
         changeLogs.push(`Status updated from "${ticket.status}" to "${nextStatus}"`);
       }
@@ -257,42 +266,42 @@ const TicketController = {
 
       // Email + Real-time notifications based on what changed (all non-blocking)
       if (updates.status && updates.status !== ticket.status) {
-        // Notify client of status change
-        if (ticket.client_email && ticket.client_id) {
+        // Notify creator of status change
+        if (ticket.created_by_email && ticket.created_by) {
           if (updates.status === 'Resolved') {
-            emailService.sendTicketResolvedEmail(ticket.client_email, {
+            emailService.sendTicketResolvedEmail(ticket.created_by_email, {
               ticketNumber: ticket.ticket_number,
               title: ticket.title,
-              clientName: ticket.client_name || 'Customer',
+              clientName: ticket.created_by_name || 'Customer',
               resolvedBy: currentUserName
             });
-            setImmediate(() => notificationService.ticketResolved(ticket.client_id, {
+            setImmediate(() => notificationService.ticketResolved(ticket.created_by, {
               ticketNumber: ticket.ticket_number,
               title: ticket.title,
               ticketId: id,
               resolvedBy: currentUserName
             }));
           } else if (updates.status === 'Closed') {
-            emailService.sendTicketClosedEmail(ticket.client_email, {
+            emailService.sendTicketClosedEmail(ticket.created_by_email, {
               ticketNumber: ticket.ticket_number,
               title: ticket.title,
-              clientName: ticket.client_name || 'Customer'
+              clientName: ticket.created_by_name || 'Customer'
             });
-            setImmediate(() => notificationService.ticketClosed(ticket.client_id, {
+            setImmediate(() => notificationService.ticketClosed(ticket.created_by, {
               ticketNumber: ticket.ticket_number,
               title: ticket.title,
               ticketId: id
             }));
           } else {
-            emailService.sendTicketStatusChangedEmail(ticket.client_email, {
+            emailService.sendTicketStatusChangedEmail(ticket.created_by_email, {
               ticketNumber: ticket.ticket_number,
               title: ticket.title,
-              clientName: ticket.client_name || 'Customer',
+              clientName: ticket.created_by_name || 'Customer',
               oldStatus: ticket.status,
               newStatus: updates.status,
               changedBy: currentUserName
             });
-            setImmediate(() => notificationService.ticketUpdated(ticket.client_id, {
+            setImmediate(() => notificationService.ticketUpdated(ticket.created_by, {
               ticketNumber: ticket.ticket_number,
               status: updates.status,
               ticketId: id
@@ -302,20 +311,20 @@ const TicketController = {
       }
 
       // Notify new assignee (email + socket)
-      if (updates.assignee_id && updates.assignee_id !== ticket.assignee_id) {
-        const newAssignee = await UserModel.findById(updates.assignee_id);
+      if (updates.assigned_to && updates.assigned_to !== ticket.assigned_to) {
+        const newAssignee = await UserModel.findById(updates.assigned_to);
         if (newAssignee) {
           emailService.sendTicketAssignedEmail(newAssignee.email, {
             ticketNumber: ticket.ticket_number,
             title: ticket.title,
             priority: ticket.priority,
             assigneeName: newAssignee.name,
-            clientName: ticket.client_name || 'Customer'
+            clientName: ticket.created_by_name || 'Customer'
           });
           // Socket: notify new assignee + notify old assignee if existed
           setImmediate(() => notificationService.ticketReassigned(
-            updates.assignee_id,
-            ticket.assignee_id !== updates.assignee_id ? ticket.assignee_id : null,
+            updates.assigned_to,
+            ticket.assigned_to !== updates.assigned_to ? ticket.assigned_to : null,
             { ticketNumber: ticket.ticket_number, title: ticket.title, ticketId: id }
           ));
         }
@@ -348,7 +357,7 @@ const TicketController = {
       }
 
       // Security check: Clients can only comment on their own tickets
-      if (role_name === 'Client' && ticket.client_id !== currentUserId) {
+      if (role_name === 'Client' && ticket.created_by !== currentUserId) {
         return res.status(403).json({ message: 'Access denied: You can only comment on your own tickets' });
       }
 
@@ -385,8 +394,8 @@ const TicketController = {
         return res.status(404).json({ message: 'Ticket not found' });
       }
 
-      // Only the client owner can submit feedback
-      if (ticket.client_id !== currentUserId) {
+      // Only the ticket creator can submit feedback
+      if (ticket.created_by !== currentUserId) {
         return res.status(403).json({ message: 'Access denied: Only the ticket creator can submit feedback' });
       }
 
@@ -396,9 +405,8 @@ const TicketController = {
       }
 
       const updatedTicket = await TicketModel.update(id, {
-        feedback_rating: numericRating,
-        feedback_comments: comments || null,
-        status: 'Closed' // Transition to Closed automatically on feedback submission
+        status: 'Closed',
+        closed_at: new Date().toISOString()
       });
 
       // Log the feedback submission to the comments stream

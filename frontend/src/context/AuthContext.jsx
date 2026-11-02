@@ -1,8 +1,8 @@
 import React, { createContext, useState, useEffect, useCallback } from 'react';
+import { API_BASE } from '../config';
+import { parseResponse } from '../utils/parseResponse';
 
 export const AuthContext = createContext();
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000/api/v1';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -24,6 +24,7 @@ export const AuthProvider = ({ children }) => {
       }
     }
     localStorage.removeItem('refreshToken');
+    localStorage.removeItem('token');
     setToken(null);
     setUser(null);
     setLoading(false);
@@ -44,12 +45,9 @@ export const AuthProvider = ({ children }) => {
         body: JSON.stringify({ refreshToken }),
       });
 
-      if (!response.ok) {
-        throw new Error('Refresh failed');
-      }
-
-      const data = await response.json();
+      const data = await parseResponse(response, 'Token refresh failed');
       setToken(data.accessToken);
+      localStorage.setItem('token', data.accessToken);
       localStorage.setItem('refreshToken', data.refreshToken);
       return data.accessToken;
     } catch (err) {
@@ -62,7 +60,7 @@ export const AuthProvider = ({ children }) => {
   // Authenticated fetch wrapper that handles token refresh automatically
   const authFetch = useCallback(async (url, options = {}) => {
     let currentToken = token;
-    
+
     // Add auth header helper
     const addAuthHeader = (opts, tok) => {
       const headers = opts.headers ? { ...opts.headers } : {};
@@ -104,7 +102,7 @@ export const AuthProvider = ({ children }) => {
               headers: { 'Authorization': `Bearer ${accessToken}` },
             });
             if (profileRes.ok) {
-              const profileData = await profileRes.json();
+              const profileData = await parseResponse(profileRes, 'Failed to load profile');
               setUser(profileData.user);
             }
           } catch (err) {
@@ -126,12 +124,10 @@ export const AuthProvider = ({ children }) => {
       body: JSON.stringify({ email, password }),
     });
 
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.message || 'Login failed');
-    }
+    const data = await parseResponse(response, 'Login failed');
 
     setToken(data.accessToken);
+    localStorage.setItem('token', data.accessToken);
     localStorage.setItem('refreshToken', data.refreshToken);
     setUser(data.user);
     return data.user;
@@ -145,11 +141,7 @@ export const AuthProvider = ({ children }) => {
       body: JSON.stringify({ name, email, password }),
     });
 
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.message || 'Registration failed');
-    }
-
+    const data = await parseResponse(response, 'Registration failed');
     return data;
   };
 
@@ -157,10 +149,10 @@ export const AuthProvider = ({ children }) => {
     if (!user || !user.permissions) return false;
     if (user.role_name === 'Admin') return true;
     if (user.permissions.includes(permission)) return true;
-    
+
     const [resource] = permission.split(':');
     if (resource && user.permissions.includes(`${resource}:*`)) return true;
-    
+
     return user.permissions.includes('*');
   }, [user]);
 

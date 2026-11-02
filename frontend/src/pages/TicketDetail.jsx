@@ -440,7 +440,13 @@ const TicketDetail = () => {
 
         {/* RIGHT COLUMN: Metadata Management (Staff dropdown selectors / Read-only for clients) */}
         <div>
-          {isStaffUser && <AiPredictionPanel ticketId={id} userRole={user?.role_name} />}
+          {isStaffUser && (
+            <AiPredictionPanel
+              ticketId={id}
+              userRole={user?.role_name}
+              onAssignEngineer={(engineerId) => handleMetadataUpdate({ assignee_id: engineerId })}
+            />
+          )}
           
           <div className="panel" style={{ padding: '20px' }}>
             <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>

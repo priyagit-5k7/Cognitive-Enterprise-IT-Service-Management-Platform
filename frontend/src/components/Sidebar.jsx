@@ -41,7 +41,7 @@ const SidebarLink = ({ to, icon: Icon, label, badge, onClick }) => (
       <span>{label}</span>
       {badge != null && badge > 0 && (
         <span style={{
-          marginLeft: 'auto', background: '#6366F1', color: '#fff',
+          marginLeft: 'auto', background: 'var(--color-primary)', color: '#fff',
           fontSize: '9px', fontWeight: 700, borderRadius: '999px',
           padding: '1px 5px', minWidth: '16px', textAlign: 'center',
         }}>{badge > 99 ? '99+' : badge}</span>
@@ -62,6 +62,8 @@ const Sidebar = ({ isOpen, toggleMobileMenu }) => {
   };
   const tm = toggleMobileMenu;
 
+  const role = user?.role_name || 'Client';
+
   return (
     <aside className={`sidebar ${isOpen ? 'mobile-open' : ''}`} style={{ overflowY: 'auto' }}>
       <div className="sidebar-brand">
@@ -71,63 +73,117 @@ const Sidebar = ({ isOpen, toggleMobileMenu }) => {
 
       <ul className="sidebar-menu">
 
-        {/* ── CORE ─────────────────────────────────── */}
+        {/* ─── CORE / MAIN (ALL ROLES) ─── */}
         <SidebarLink to="/" icon={LayoutDashboard} label="Dashboard" onClick={tm} />
+        
         {hasPermission('tickets:read') && (
-          <SidebarLink to="/tickets" icon={Ticket} label="Tickets" onClick={tm} />
+          <SidebarLink to="/tickets" icon={Ticket} label={role === 'Client' ? 'My Tickets' : 'Ticket Queue'} onClick={tm} />
         )}
+        
         <SidebarLink to="/notifications" icon={Bell} label="Notifications" badge={unreadCount} onClick={tm} />
         <SidebarLink to="/search" icon={Search} label="Search" onClick={tm} />
 
-        {/* ── SERVICE MANAGEMENT ───────────────────── */}
-        <SidebarGroup label="Service Mgmt" icon={BarChart2} defaultOpen={true}>
-          {hasPermission('analytics:read') && (
-            <SidebarLink to="/analytics" icon={BarChart2} label="Analytics" onClick={tm} />
-          )}
-          <SidebarLink to="/knowledge-base" icon={BookOpen} label="Knowledge Base" onClick={tm} />
-          <SidebarLink to="/documents" icon={FileText} label="Documents" onClick={tm} />
-          {hasPermission('manage_users') && (
-            <SidebarLink to="/sla-policies" icon={Clock} label="SLA Policies" onClick={tm} />
-          )}
-        </SidebarGroup>
+        {/* ─── CLIENT EXPERIENCE SPECIFICS ─── */}
+        {role === 'Client' && (
+          <>
+            <SidebarGroup label="Support & Self Service" icon={BookOpen} defaultOpen={true}>
+              <SidebarLink to="/knowledge-base" icon={BookOpen} label="Knowledge Base" onClick={tm} />
+              <SidebarLink to="/chatbot" icon={MessageSquare} label="AI Support Assistant" onClick={tm} />
+            </SidebarGroup>
+          </>
+        )}
 
-        {/* ── ITSM MODULES ─────────────────────────── */}
-        <SidebarGroup label="ITSM" icon={GitMerge} defaultOpen={true}>
-          <SidebarLink to="/assets" icon={Package} label="Assets" onClick={tm} />
-          <SidebarLink to="/changes" icon={GitMerge} label="Change Mgmt" onClick={tm} />
-          <SidebarLink to="/problems" icon={AlertTriangle} label="Problems" onClick={tm} />
-          <SidebarLink to="/releases" icon={Rocket} label="Releases" onClick={tm} />
-        </SidebarGroup>
+        {/* ─── SUPPORT ENGINEER EXPERIENCE SPECIFICS ─── */}
+        {role === 'Support Engineer' && (
+          <>
+            <SidebarGroup label="Engineer Workspace" icon={Ticket} defaultOpen={true}>
+              <SidebarLink to="/knowledge-base" icon={BookOpen} label="Knowledge Base" onClick={tm} />
+              <SidebarLink to="/ai-intelligence" icon={BrainCircuit} label="AI Copilot & Insights" onClick={tm} />
+              <SidebarLink to="/documents" icon={FileText} label="Documents" onClick={tm} />
+            </SidebarGroup>
 
-        {/* ── INFRASTRUCTURE ───────────────────────── */}
-        <SidebarGroup label="Infrastructure" icon={Database}>
-          <SidebarLink to="/cmdb" icon={Database} label="CMDB" onClick={tm} />
-          <SidebarLink to="/workflows" icon={Workflow} label="Workflows" onClick={tm} />
-          <SidebarLink to="/devops" icon={GitBranch} label="DevOps" onClick={tm} />
-        </SidebarGroup>
+            <SidebarGroup label="ITIL Quick Ref" icon={GitMerge} defaultOpen={false}>
+              <SidebarLink to="/problems" icon={AlertTriangle} label="Known Problems" onClick={tm} />
+              <SidebarLink to="/assets" icon={Package} label="Asset Lookup" onClick={tm} />
+              <SidebarLink to="/cmdb" icon={Database} label="CMDB Dependencies" onClick={tm} />
+            </SidebarGroup>
+          </>
+        )}
 
-        {/* ── AI PLATFORM ──────────────────────────── */}
-        <SidebarGroup label="AI Platform" icon={BrainCircuit} defaultOpen={true}>
-          <SidebarLink to="/ai-intelligence" icon={BrainCircuit} label="AI Insights" onClick={tm} />
-          <SidebarLink to="/ai-platform" icon={Cpu} label="AI Studio" onClick={tm} />
-          <SidebarLink to="/chatbot" icon={MessageSquare} label="AI Assistant" onClick={tm} />
-          <SidebarLink to="/enterprise-ai" icon={Rocket} label="AI Command Center" onClick={tm} />
-        </SidebarGroup>
+        {/* ─── IT MANAGER EXPERIENCE SPECIFICS ─── */}
+        {role === 'Manager' && (
+          <>
+            <SidebarGroup label="Operations & SLAs" icon={BarChart2} defaultOpen={true}>
+              <SidebarLink to="/analytics" icon={BarChart2} label="Team Analytics" onClick={tm} />
+              <SidebarLink to="/sla-policies" icon={Clock} label="SLA Performance" onClick={tm} />
+              <SidebarLink to="/knowledge-base" icon={BookOpen} label="Knowledge Base" onClick={tm} />
+              <SidebarLink to="/documents" icon={FileText} label="IT Documentation" onClick={tm} />
+            </SidebarGroup>
 
-        {/* ── ADMIN ────────────────────────────────── */}
-        <SidebarGroup label="Administration" icon={ShieldCheck}>
-          {hasPermission('users:read') && (
-            <SidebarLink to="/users" icon={Users} label="Users" onClick={tm} />
-          )}
-          {hasPermission('roles:read') && (
-            <SidebarLink to="/roles" icon={ShieldCheck} label="Roles" onClick={tm} />
-          )}
-          <SidebarLink to="/security" icon={Lock} label="Security" onClick={tm} />
-          <SidebarLink to="/monitoring" icon={Activity} label="Monitoring" onClick={tm} />
-        </SidebarGroup>
+            <SidebarGroup label="ITIL Processes" icon={GitMerge} defaultOpen={true}>
+              <SidebarLink to="/changes" icon={GitMerge} label="Change Control" onClick={tm} />
+              <SidebarLink to="/problems" icon={AlertTriangle} label="Problem Mgmt" onClick={tm} />
+              <SidebarLink to="/releases" icon={Rocket} label="Release Management" onClick={tm} />
+              <SidebarLink to="/assets" icon={Package} label="Asset Inventory" onClick={tm} />
+              <SidebarLink to="/cmdb" icon={Database} label="CMDB Topology" onClick={tm} />
+            </SidebarGroup>
+
+            <SidebarGroup label="AI & Automation" icon={BrainCircuit} defaultOpen={false}>
+              <SidebarLink to="/ai-intelligence" icon={BrainCircuit} label="AI Insights" onClick={tm} />
+              <SidebarLink to="/ai-platform" icon={Cpu} label="AI Platform" onClick={tm} />
+              <SidebarLink to="/workflows" icon={Workflow} label="Workflow Engine" onClick={tm} />
+            </SidebarGroup>
+
+            {hasPermission('users:read') && (
+              <SidebarGroup label="Team Oversight" icon={Users} defaultOpen={false}>
+                <SidebarLink to="/users" icon={Users} label="Engineers & Staff" onClick={tm} />
+              </SidebarGroup>
+            )}
+          </>
+        )}
+
+        {/* ─── ADMIN EXPERIENCE (FULL ACCESS) ─── */}
+        {role === 'Admin' && (
+          <>
+            <SidebarGroup label="Service Mgmt" icon={BarChart2} defaultOpen={true}>
+              <SidebarLink to="/analytics" icon={BarChart2} label="Analytics" onClick={tm} />
+              <SidebarLink to="/knowledge-base" icon={BookOpen} label="Knowledge Base" onClick={tm} />
+              <SidebarLink to="/documents" icon={FileText} label="Documents" onClick={tm} />
+              <SidebarLink to="/sla-policies" icon={Clock} label="SLA Policies" onClick={tm} />
+            </SidebarGroup>
+
+            <SidebarGroup label="ITSM" icon={GitMerge} defaultOpen={false}>
+              <SidebarLink to="/assets" icon={Package} label="Assets" onClick={tm} />
+              <SidebarLink to="/changes" icon={GitMerge} label="Change Mgmt" onClick={tm} />
+              <SidebarLink to="/problems" icon={AlertTriangle} label="Problems" onClick={tm} />
+              <SidebarLink to="/releases" icon={Rocket} label="Releases" onClick={tm} />
+            </SidebarGroup>
+
+            <SidebarGroup label="Infrastructure" icon={Database} defaultOpen={false}>
+              <SidebarLink to="/cmdb" icon={Database} label="CMDB" onClick={tm} />
+              <SidebarLink to="/workflows" icon={Workflow} label="Workflows" onClick={tm} />
+              <SidebarLink to="/devops" icon={GitBranch} label="DevOps" onClick={tm} />
+            </SidebarGroup>
+
+            <SidebarGroup label="AI Platform" icon={BrainCircuit} defaultOpen={false}>
+              <SidebarLink to="/ai-intelligence" icon={BrainCircuit} label="AI Insights" onClick={tm} />
+              <SidebarLink to="/ai-platform" icon={Cpu} label="AI Studio" onClick={tm} />
+              <SidebarLink to="/chatbot" icon={MessageSquare} label="AI Assistant" onClick={tm} />
+              <SidebarLink to="/enterprise-ai" icon={Rocket} label="AI Command Center" onClick={tm} />
+            </SidebarGroup>
+
+            <SidebarGroup label="Administration" icon={ShieldCheck} defaultOpen={true}>
+              <SidebarLink to="/users" icon={Users} label="Users" onClick={tm} />
+              <SidebarLink to="/roles" icon={ShieldCheck} label="Roles" onClick={tm} />
+              <SidebarLink to="/security" icon={Lock} label="Security" onClick={tm} />
+              <SidebarLink to="/monitoring" icon={Activity} label="Monitoring" onClick={tm} />
+            </SidebarGroup>
+          </>
+        )}
 
       </ul>
 
+      {/* Sidebar Footer with Active Role Pill */}
       <div className="sidebar-footer">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {user && (

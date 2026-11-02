@@ -1,96 +1,135 @@
 /**
  * engineerRecommendationService.js
- * Recommends the best available support engineer for a ticket
- * based on workload, specialization (by category), and active status.
+ * Intelligently recommends suitable support engineers for a ticket
+ * based on category specialization, active status, and live open-ticket workload.
  */
 
 const db = require('../config/db');
 
-// Category-to-skill mapping for matching engineers
-const CATEGORY_SKILLS = {
-  'Hardware Support': ['hardware', 'desktop', 'laptop', 'printer', 'infrastructure'],
-  'Software Issues': ['software', 'application', 'windows', 'deployment'],
-  'Network & Internet': ['network', 'vpn', 'connectivity', 'infrastructure'],
-  'Account & Access': ['security', 'access', 'iam', 'administration'],
-  'General Request': [] // Any engineer can handle
-};
-
 /**
- * Recommend a support engineer for the given category.
+ * Recommend support engineers for a given category.
  * Strategy:
- *   1. Fetch all active Support Engineers.
- *   2. Count their open ticket workload.
- *   3. Prefer engineers with fewest tickets. 
- *   4. If multiple tied engineers, pick by id (deterministic).
+ *   1. Fetch all active Support Engineers matching the category specialization.
+ *   2. If fewer than 2 match the category, include other active engineers as general fallback.
+ *   3. Retrieve live open-ticket workloads (tickets not Closed or Resolved).
+ *   4. Rank engineers:
+ *      a) Category specialization match (primary)
+ *      b) Lowest current open-ticket workload (secondary)
+ *      c) Deterministic sort by name / ID (tie-breaker)
+ *   5. Return top recommendations (at least 2 if available), with match reasons and rank.
  *
- * @param {string} category - Predicted category from classificationService
- * @param {string} excludeUserId - Exclude the reporter from assignment candidates
- * @returns {Promise<{ engineer: Object|null, reason: string }>}
+ * @param {string} category - Category name (e.g., 'Network & Internet', 'Software Issues')
+ * @param {string|null} excludeUserId - Optional user ID to exclude (e.g. ticket creator)
+ * @returns {Promise<{ recommendations: Array, engineer: Object|null, reason: string }>}
  */
 async function recommendEngineer(category, excludeUserId = null) {
   try {
-    // 1. Get all active Support Engineers
-    const engResult = await db.query(`
-      SELECT u.id, u.name, u.email, r.name AS role_name
+    const cleanCategory = (category || '').trim();
+
+    // 1. Fetch all active Support Engineers from database
+    const engQuery = `
+      SELECT u.id, u.name, u.email, u.specialization, u.department, r.name AS role_name
       FROM users u
       JOIN roles r ON u.role_id = r.id
       WHERE r.name = 'Support Engineer'
         AND u.status = 'Active'
+        AND u.is_active = TRUE
         AND u.deleted_at IS NULL
         ${excludeUserId ? `AND u.id != $1` : ''}
       ORDER BY u.name ASC
-    `, excludeUserId ? [excludeUserId] : []);
+    `;
+    const engResult = await db.query(engQuery, excludeUserId ? [excludeUserId] : []);
+    const allEngineers = engResult.rows;
 
-    const engineers = engResult.rows;
-
-    if (!engineers.length) {
-      return { engineer: null, reason: 'No active Support Engineers available for auto-assignment.' };
+    if (!allEngineers.length) {
+      return {
+        recommendations: [],
+        engineer: null,
+        reason: 'No active Support Engineers available for assignment.'
+      };
     }
 
-    // 2. Get open ticket workloads for each engineer
+    // 2. Fetch live open ticket workloads for all active engineers
+    const engIds = allEngineers.map(e => e.id);
     const workloadResult = await db.query(`
       SELECT assigned_to, COUNT(*) AS open_count
       FROM tickets
       WHERE status NOT IN ('Closed', 'Resolved')
         AND assigned_to = ANY($1::uuid[])
       GROUP BY assigned_to
-    `, [engineers.map(e => e.id)]);
+    `, [engIds]);
 
     const workloadMap = {};
     workloadResult.rows.forEach(row => {
       workloadMap[row.assigned_to] = parseInt(row.open_count, 10);
     });
 
-    // 3. Attach workload count to each engineer (default 0 if no tickets)
-    const engineersWithLoad = engineers.map(eng => ({
+    // Attach workload count
+    const engineersWithLoad = allEngineers.map(eng => ({
       ...eng,
-      openTickets: workloadMap[eng.id] || 0
+      openTickets: workloadMap[eng.id] || 0,
+      isSpecialist: cleanCategory && eng.specialization && eng.specialization.toLowerCase() === cleanCategory.toLowerCase()
     }));
 
-    // 4. Sort by workload ascending (least busy first)
-    engineersWithLoad.sort((a, b) => a.openTickets - b.openTickets);
+    // 3. Separate specialized vs. general fallback
+    const specialists = engineersWithLoad.filter(e => e.isSpecialist);
+    const nonSpecialists = engineersWithLoad.filter(e => !e.isSpecialist);
 
-    const recommended = engineersWithLoad[0];
+    // Sort specialists by open tickets ascending
+    specialists.sort((a, b) => a.openTickets - b.openTickets);
+    // Sort non-specialists by open tickets ascending
+    nonSpecialists.sort((a, b) => a.openTickets - b.openTickets);
+
+    // Combine pool: specialists first, followed by general fallback
+    const rankedPool = [...specialists, ...nonSpecialists];
+
+    // Build structured recommendation list with rank and match reasons
+    const recommendations = rankedPool.map((eng, idx) => {
+      let matchReason = '';
+      if (eng.isSpecialist) {
+        matchReason = `Direct Specialist in ${eng.specialization} • ${eng.openTickets} open ticket${eng.openTickets === 1 ? '' : 's'}`;
+      } else {
+        matchReason = `General Support Backup • ${eng.openTickets} open ticket${eng.openTickets === 1 ? '' : 's'}`;
+      }
+
+      return {
+        id: eng.id,
+        name: eng.name,
+        email: eng.email,
+        specialization: eng.specialization || 'General Support',
+        department: eng.department || 'IT Operations',
+        openTickets: eng.openTickets,
+        isSpecialist: !!eng.isSpecialist,
+        rank: idx + 1,
+        matchReason
+      };
+    });
+
+    const topCandidate = recommendations[0] || null;
+    const topReason = topCandidate
+      ? (topCandidate.isSpecialist
+          ? `Top recommended: ${topCandidate.name} (Specialist in ${topCandidate.specialization} with ${topCandidate.openTickets} open tickets)`
+          : `Top recommended: ${topCandidate.name} (General fallback with ${topCandidate.openTickets} open tickets)`)
+      : 'No candidate available';
 
     return {
-      engineer: recommended,
-      reason: `Selected based on lowest workload (${recommended.openTickets} open tickets).`
+      recommendations,
+      engineer: topCandidate,
+      reason: topReason
     };
   } catch (err) {
     console.error('Engineer recommendation error:', err.message);
-    return { engineer: null, reason: 'Auto-recommendation failed. Please assign manually.' };
+    return {
+      recommendations: [],
+      engineer: null,
+      reason: 'Auto-recommendation failed. Please assign manually.'
+    };
   }
 }
 
 /**
  * Find similar open or recently resolved tickets by category and keywords.
  * Returns up to 5 similar tickets.
- *
- * @param {string} ticketId - The new ticket ID to exclude from results
- * @param {string} category - Predicted category
- * @param {string} title
- * @param {string} description
- * @returns {Promise<Array>}
  */
 async function findSimilarTickets(ticketId, category, title, description) {
   try {
@@ -98,18 +137,16 @@ async function findSimilarTickets(ticketId, category, title, description) {
       .toLowerCase()
       .split(/\s+/)
       .filter(w => w.length > 4)
-      .slice(0, 8); // Top 8 significant words
+      .slice(0, 8);
 
     if (!words.length) return [];
 
-    // Search by category and keyword overlap in title
     const result = await db.query(`
       SELECT t.id, t.ticket_number, t.title, t.status, t.priority, t.created_at,
              u.name AS reporter_name
       FROM tickets t
       LEFT JOIN users u ON t.created_by = u.id
       WHERE t.id != $1
-        AND t.deleted_at IS NULL
         AND (
           t.category_id IN (
             SELECT id FROM ticket_categories WHERE LOWER(name) = LOWER($2)
@@ -120,7 +157,7 @@ async function findSimilarTickets(ticketId, category, title, description) {
       LIMIT 5
     `, [
       ticketId,
-      category,
+      category || '',
       words.map(w => `%${w}%`)
     ]);
 

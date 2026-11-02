@@ -17,7 +17,7 @@ const getTicketPrediction = async (req, res) => {
   try {
     // Verify the ticket exists and requester has access
     const ticketResult = await db.query(
-      `SELECT id, title, description, type, created_by FROM tickets WHERE id = $1 AND deleted_at IS NULL`,
+      `SELECT id, title, description, type, created_by FROM tickets WHERE id = $1`,
       [id]
     );
 
@@ -57,7 +57,7 @@ const reAnalyzeTicketById = async (req, res) => {
 
   try {
     const ticketResult = await db.query(
-      `SELECT id, title, description, type, created_by FROM tickets WHERE id = $1 AND deleted_at IS NULL`,
+      `SELECT id, title, description, type, created_by FROM tickets WHERE id = $1`,
       [id]
     );
 
@@ -130,7 +130,7 @@ const getAnalytics = async (req, res) => {
         ap.created_at
       FROM ai_predictions ap
       JOIN tickets t ON ap.ticket_id = t.id
-      WHERE t.deleted_at IS NULL
+      WHERE 1=1
       ORDER BY ap.created_at DESC
       LIMIT 10
     `);

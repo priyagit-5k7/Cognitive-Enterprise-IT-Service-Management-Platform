@@ -5,20 +5,24 @@ import { useNavigate } from 'react-router-dom';
 
 const typeIcon = (type) => {
   switch (type) {
-    case 'success': return <CheckCircle size={14} className="text-emerald-400" />;
-    case 'error': return <AlertTriangle size={14} className="text-red-400" />;
-    case 'warning': return <AlertTriangle size={14} className="text-amber-400" />;
-    case 'ai': return <Zap size={14} className="text-violet-400" />;
-    default: return <Info size={14} className="text-blue-400" />;
+    case 'success': return <CheckCircle size={15} style={{ color: 'var(--status-success)' }} />;
+    case 'error': return <AlertTriangle size={15} style={{ color: 'var(--status-error)' }} />;
+    case 'warning': return <AlertTriangle size={15} style={{ color: 'var(--status-warning)' }} />;
+    case 'ai': return <Zap size={15} style={{ color: 'var(--color-primary)' }} />;
+    default: return <Info size={15} style={{ color: 'var(--status-info)' }} />;
   }
 };
 
-const priorityDot = (priority) => {
-  const colors = { critical: 'bg-red-500', high: 'bg-amber-500', normal: 'bg-blue-500' };
-  return colors[priority] || 'bg-blue-500';
+const priorityDotColor = (priority) => {
+  switch (priority) {
+    case 'critical': return 'var(--status-error)';
+    case 'high': return 'var(--status-warning)';
+    default: return 'var(--color-primary)';
+  }
 };
 
 const timeAgo = (dateStr) => {
+  if (!dateStr) return 'just now';
   const diff = Date.now() - new Date(dateStr).getTime();
   const m = Math.floor(diff / 60000);
   if (m < 1) return 'just now';
@@ -56,49 +60,127 @@ export default function NotificationBell() {
   const recent = notifications.slice(0, 8);
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div style={{ position: 'relative' }} ref={dropdownRef}>
       {/* Bell Button */}
       <button
         id="notification-bell-btn"
         onClick={() => setOpen(prev => !prev)}
-        className="relative p-2 rounded-xl hover:bg-white/5 transition-all group"
+        style={{
+          position: 'relative',
+          padding: '8px',
+          borderRadius: '50%',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: 'var(--text-muted)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'all 0.2s ease'
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text-main)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}
         aria-label="Notifications"
       >
-        <Bell size={20} className="text-slate-300 group-hover:text-white transition-colors" />
+        <Bell size={20} />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-indigo-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 animate-pulse">
+          <span style={{
+            position: 'absolute',
+            top: '2px',
+            right: '2px',
+            minWidth: '18px',
+            height: '18px',
+            backgroundColor: 'var(--color-primary)',
+            color: '#ffffff',
+            fontSize: '10px',
+            fontWeight: 700,
+            borderRadius: '999px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '0 4px',
+            boxShadow: '0 0 8px rgba(99, 102, 241, 0.5)'
+          }}>
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </button>
 
-      {/* Dropdown */}
+      {/* Dropdown Popover */}
       {open && (
-        <div className="absolute right-0 top-12 w-96 bg-[#1A1A2E] border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+        <div style={{
+          position: 'absolute',
+          right: 0,
+          top: '46px',
+          width: '380px',
+          backgroundColor: 'var(--bg-surface)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '14px',
+          boxShadow: 'var(--shadow-lg)',
+          zIndex: 1000,
+          overflow: 'hidden',
+          animation: 'fadeIn 0.15s ease'
+        }}>
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-            <div className="flex items-center gap-2">
-              <Bell size={16} className="text-indigo-400" />
-              <span className="text-sm font-semibold text-white">Notifications</span>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '12px 16px',
+            borderBottom: '1px solid var(--border-color)',
+            backgroundColor: 'var(--bg-surface)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Bell size={16} style={{ color: 'var(--color-primary)' }} />
+              <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-main)' }}>Notifications</span>
               {unreadCount > 0 && (
-                <span className="bg-indigo-500/20 text-indigo-400 text-xs font-bold px-2 py-0.5 rounded-full">
+                <span style={{
+                  backgroundColor: 'var(--status-info-bg)',
+                  color: 'var(--status-info)',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  padding: '2px 8px',
+                  borderRadius: '999px'
+                }}>
                   {unreadCount} new
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-1">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               {unreadCount > 0 && (
                 <button
                   onClick={markAllAsRead}
-                  className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-all"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--text-muted)',
+                    padding: '4px 6px',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '12px'
+                  }}
                   title="Mark all as read"
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text-main)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)'; }}
                 >
-                  <CheckCheck size={15} />
+                  <CheckCheck size={14} />
+                  <span>Mark all read</span>
                 </button>
               )}
               <button
                 onClick={() => { navigate('/notifications'); setOpen(false); }}
-                className="text-xs text-indigo-400 hover:text-indigo-300 px-2 py-1 rounded-lg hover:bg-white/5 transition-all"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--color-primary)',
+                  fontWeight: 600,
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  padding: '4px 6px'
+                }}
               >
                 See all
               </button>
@@ -106,47 +188,106 @@ export default function NotificationBell() {
           </div>
 
           {/* List */}
-          <div className="max-h-[420px] overflow-y-auto">
+          <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
             {recent.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center px-4">
-                <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center mb-3">
-                  <Bell size={22} className="text-slate-500" />
-                </div>
-                <p className="text-slate-400 text-sm font-medium">All caught up!</p>
-                <p className="text-slate-600 text-xs mt-1">No notifications yet.</p>
+              <div style={{ padding: '36px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <Bell size={28} style={{ margin: '0 auto 8px auto', opacity: 0.4 }} />
+                <p style={{ fontSize: '13px', fontWeight: 600 }}>All caught up!</p>
+                <p style={{ fontSize: '11px', marginTop: '4px' }}>No unread alerts or notifications.</p>
               </div>
             ) : (
               recent.map((n) => (
                 <div
                   key={n.id}
-                  className={`group relative flex items-start gap-3 px-4 py-3 border-b border-white/5 cursor-pointer transition-all hover:bg-white/5 ${!n.is_read ? 'bg-indigo-500/5' : ''}`}
                   onClick={() => handleClick(n)}
+                  style={{
+                    position: 'relative',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '12px',
+                    padding: '12px 16px',
+                    borderBottom: '1px solid var(--border-color)',
+                    cursor: 'pointer',
+                    backgroundColor: !n.is_read ? 'var(--bg-hover)' : 'transparent',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-hover)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = !n.is_read ? 'var(--bg-hover)' : 'transparent'; }}
                 >
-                  {/* Unread dot */}
+                  {/* Unread indicator dot */}
                   {!n.is_read && (
-                    <span className={`absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${priorityDot(n.priority)}`} />
+                    <span style={{
+                      position: 'absolute',
+                      left: '6px',
+                      top: '18px',
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      backgroundColor: priorityDotColor(n.priority)
+                    }} />
                   )}
 
                   {/* Icon */}
-                  <div className="mt-0.5 w-7 h-7 bg-white/5 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '8px',
+                    backgroundColor: 'var(--bg-surface)',
+                    border: '1px solid var(--border-color)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
                     {typeIcon(n.type)}
                   </div>
 
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium truncate ${n.is_read ? 'text-slate-400' : 'text-white'}`}>
+                  {/* Text Content */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: '13px',
+                      fontWeight: n.is_read ? 500 : 700,
+                      color: n.is_read ? 'var(--text-muted)' : 'var(--text-main)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}>
                       {n.title}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{n.message}</p>
-                    <p className="text-[10px] text-slate-600 mt-1">{timeAgo(n.created_at)}</p>
+                    </div>
+                    <div style={{
+                      fontSize: '12px',
+                      color: 'var(--text-muted)',
+                      marginTop: '2px',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                      lineHeight: '1.4'
+                    }}>
+                      {n.message}
+                    </div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      {timeAgo(n.created_at)}
+                    </div>
                   </div>
 
-                  {/* Delete */}
+                  {/* Delete button */}
                   <button
                     onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-all flex-shrink-0 mt-0.5"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                      padding: '4px',
+                      borderRadius: '4px',
+                      alignSelf: 'flex-start'
+                    }}
+                    title="Delete notification"
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--status-error)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
                   >
-                    <Trash2 size={12} />
+                    <Trash2 size={13} />
                   </button>
                 </div>
               ))

@@ -1,38 +1,40 @@
 import React, { useState } from 'react';
-import { Bell, Check, CheckCheck, Trash2, AlertTriangle, Info, CheckCircle, Zap, Filter, RefreshCw } from 'lucide-react';
+import { Bell, Check, CheckCheck, Trash2, AlertTriangle, Info, CheckCircle, Zap, RefreshCw } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 import { useNavigate } from 'react-router-dom';
 
 const typeIcon = (type) => {
-  const icons = {
-    success: <CheckCircle size={16} className="text-emerald-400" />,
-    error: <AlertTriangle size={16} className="text-red-400" />,
-    warning: <AlertTriangle size={16} className="text-amber-400" />,
-    ai: <Zap size={16} className="text-violet-400" />,
-    info: <Info size={16} className="text-blue-400" />
-  };
-  return icons[type] || icons.info;
+  switch (type) {
+    case 'success': return <CheckCircle size={18} style={{ color: 'var(--status-success)' }} />;
+    case 'error': return <AlertTriangle size={18} style={{ color: 'var(--status-error)' }} />;
+    case 'warning': return <AlertTriangle size={18} style={{ color: 'var(--status-warning)' }} />;
+    case 'ai': return <Zap size={18} style={{ color: 'var(--color-primary)' }} />;
+    default: return <Info size={18} style={{ color: 'var(--status-info)' }} />;
+  }
 };
 
-const PRIORITY_BADGE = {
-  critical: 'bg-red-500/20 text-red-400 border-red-500/30',
-  high: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  normal: 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+const getPriorityBadgeStyle = (priority) => {
+  switch (priority) {
+    case 'critical':
+      return { backgroundColor: 'var(--status-error-bg)', color: 'var(--status-error)', border: '1px solid var(--status-error)' };
+    case 'high':
+      return { backgroundColor: 'var(--status-warning-bg)', color: 'var(--status-warning)', border: '1px solid var(--status-warning)' };
+    default:
+      return { backgroundColor: 'var(--status-info-bg)', color: 'var(--status-info)', border: '1px solid var(--status-info)' };
+  }
 };
 
-const timeAgo = (dateStr) => {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return 'just now';
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return new Date(dateStr).toLocaleDateString();
+const formatTime = (dateStr) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  return date.toLocaleString('en-US', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
 };
 
 export default function NotificationPage() {
   const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification, clearAll, fetchNotifications } = useNotifications();
-  const [filter, setFilter] = useState('all'); // all | unread | read
+  const [filter, setFilter] = useState('all'); // 'all', 'unread', 'read'
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -45,7 +47,7 @@ export default function NotificationPage() {
   const handleRefresh = async () => {
     setLoading(true);
     await fetchNotifications();
-    setTimeout(() => setLoading(false), 500);
+    setTimeout(() => setLoading(false), 400);
   };
 
   const handleClick = (n) => {
@@ -54,124 +56,188 @@ export default function NotificationPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto py-8 px-4">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+    <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+      {/* Page Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-500/20 rounded-xl flex items-center justify-center">
-              <Bell size={20} className="text-indigo-400" />
+          <h2 style={{ fontSize: '26px', fontWeight: 700, fontFamily: 'Outfit', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '10px',
+              backgroundColor: 'var(--status-info-bg)',
+              color: 'var(--status-info)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <Bell size={22} />
             </div>
-            Notifications
-          </h1>
-          <p className="text-slate-400 text-sm mt-1">
-            {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}` : 'All caught up!'}
+            <span>Notifications Center</span>
+          </h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginTop: '4px' }}>
+            {unreadCount > 0 
+              ? `You have ${unreadCount} unread system alert${unreadCount > 1 ? 's' : ''}`
+              : 'All caught up — no unread notifications'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Global Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <button
             onClick={handleRefresh}
-            className={`p-2 rounded-xl hover:bg-white/5 text-slate-400 hover:text-white transition-all ${loading ? 'animate-spin' : ''}`}
-            title="Refresh"
+            className="btn btn-secondary"
+            style={{ width: 'auto', padding: '9px 12px' }}
+            title="Refresh alerts"
+            disabled={loading}
           >
-            <RefreshCw size={18} />
+            <RefreshCw size={16} className={loading ? 'spin' : ''} />
+            <span>Refresh</span>
           </button>
+
           {unreadCount > 0 && (
             <button
               onClick={markAllAsRead}
-              className="flex items-center gap-2 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-400 border border-indigo-500/30 px-3 py-2 rounded-xl text-sm font-medium transition-all"
+              className="btn btn-primary"
+              style={{ width: 'auto', padding: '9px 14px' }}
             >
-              <CheckCheck size={15} />
-              Mark all read
+              <CheckCheck size={16} />
+              <span>Mark All Read</span>
             </button>
           )}
+
           {notifications.length > 0 && (
             <button
               onClick={clearAll}
-              className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 px-3 py-2 rounded-xl text-sm font-medium transition-all"
+              className="btn btn-secondary"
+              style={{ width: 'auto', padding: '9px 12px', color: 'var(--status-error)' }}
+              title="Delete all notifications"
             >
-              <Trash2 size={15} />
-              Clear all
+              <Trash2 size={16} />
+              <span>Clear All</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1 mb-4 w-fit">
-        {['all', 'unread', 'read'].map(f => (
+      {/* Filter Tabs Bar */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        marginBottom: '20px',
+        backgroundColor: 'var(--bg-surface)',
+        padding: '6px',
+        borderRadius: '10px',
+        border: '1px solid var(--border-color)',
+        width: 'fit-content'
+      }}>
+        {[
+          { key: 'all', label: `All (${notifications.length})` },
+          { key: 'unread', label: `Unread (${unreadCount})` },
+          { key: 'read', label: `Read (${notifications.length - unreadCount})` }
+        ].map(tab => (
           <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-all ${
-              filter === f
-                ? 'bg-indigo-500 text-white shadow'
-                : 'text-slate-400 hover:text-white'
-            }`}
+            key={tab.key}
+            onClick={() => setFilter(tab.key)}
+            className={`btn ${filter === tab.key ? 'btn-primary' : 'btn-secondary'}`}
+            style={{
+              padding: '6px 16px',
+              fontSize: '13px',
+              fontWeight: 600,
+              borderRadius: '8px',
+              border: 'none',
+              background: filter === tab.key ? 'var(--color-primary)' : 'transparent',
+              color: filter === tab.key ? '#ffffff' : 'var(--text-muted)'
+            }}
           >
-            {f}
-            {f === 'unread' && unreadCount > 0 && (
-              <span className="ml-2 bg-white/20 text-white text-xs px-1.5 rounded-full">{unreadCount}</span>
-            )}
+            {tab.label}
           </button>
         ))}
       </div>
 
-      {/* Notifications list */}
-      <div className="space-y-2">
+      {/* Notifications List */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {filtered.length === 0 ? (
-          <div className="text-center py-16 bg-white/[0.02] rounded-2xl border border-white/5">
-            <Bell size={40} className="text-slate-600 mx-auto mb-3" />
-            <p className="text-slate-400 font-medium">No notifications</p>
-            <p className="text-slate-600 text-sm mt-1">
-              {filter !== 'all' ? `No ${filter} notifications.` : "You're all caught up!"}
+          <div className="panel" style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
+            <Bell size={44} style={{ margin: '0 auto 16px auto', opacity: 0.3 }} />
+            <h4 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '6px' }}>No notifications found</h4>
+            <p style={{ fontSize: '14px' }}>
+              {filter !== 'all' ? `No ${filter} alerts matching this filter.` : 'You have no notifications at this time.'}
             </p>
           </div>
         ) : (
-          filtered.map((n) => (
+          filtered.map(n => (
             <div
               key={n.id}
-              className={`group relative flex items-start gap-4 p-4 rounded-2xl border cursor-pointer transition-all hover:border-white/20 ${
-                !n.is_read
-                  ? 'bg-indigo-500/5 border-indigo-500/20'
-                  : 'bg-white/[0.02] border-white/5'
-              }`}
               onClick={() => handleClick(n)}
+              className="panel"
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '16px',
+                padding: '16px 20px',
+                marginBottom: 0,
+                cursor: 'pointer',
+                backgroundColor: !n.is_read ? 'var(--bg-surface)' : 'var(--bg-app)',
+                borderColor: !n.is_read ? 'var(--color-primary)' : 'var(--border-color)',
+                borderLeftWidth: !n.is_read ? '4px' : '1px',
+                transition: 'all 0.15s ease'
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
             >
-              {/* Unread indicator */}
-              {!n.is_read && (
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-indigo-500 rounded-r-full" />
-              )}
-
-              {/* Icon */}
-              <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center flex-shrink-0">
+              {/* Type Icon */}
+              <div style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '10px',
+                backgroundColor: 'var(--bg-hover)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
                 {typeIcon(n.type)}
               </div>
 
-              {/* Content */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <p className={`text-sm font-semibold ${n.is_read ? 'text-slate-400' : 'text-white'}`}>
+              {/* Body */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '15px', fontWeight: n.is_read ? 600 : 700, color: 'var(--text-main)' }}>
                     {n.title}
-                  </p>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {n.priority && n.priority !== 'normal' && (
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase ${PRIORITY_BADGE[n.priority] || ''}`}>
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {n.priority && (
+                      <span style={{
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        textTransform: 'uppercase',
+                        ...getPriorityBadgeStyle(n.priority)
+                      }}>
                         {n.priority}
                       </span>
                     )}
-                    <span className="text-[11px] text-slate-500 whitespace-nowrap">{timeAgo(n.created_at)}</span>
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                      {formatTime(n.created_at)}
+                    </span>
                   </div>
                 </div>
-                <p className="text-sm text-slate-400 mt-1 leading-relaxed">{n.message}</p>
+
+                <p style={{ fontSize: '14px', color: 'var(--text-muted)', lineHeight: '1.5', margin: 0 }}>
+                  {n.message}
+                </p>
               </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                 {!n.is_read && (
                   <button
                     onClick={(e) => { e.stopPropagation(); markAsRead(n.id); }}
-                    className="p-1.5 rounded-lg hover:bg-indigo-500/20 text-slate-500 hover:text-indigo-400 transition-all"
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 8px', fontSize: '12px', width: 'auto' }}
                     title="Mark as read"
                   >
                     <Check size={14} />
@@ -179,8 +245,9 @@ export default function NotificationPage() {
                 )}
                 <button
                   onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
-                  className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-all"
-                  title="Delete"
+                  className="btn btn-secondary"
+                  style={{ padding: '6px 8px', fontSize: '12px', width: 'auto', color: 'var(--status-error)' }}
+                  title="Delete notification"
                 >
                   <Trash2 size={14} />
                 </button>

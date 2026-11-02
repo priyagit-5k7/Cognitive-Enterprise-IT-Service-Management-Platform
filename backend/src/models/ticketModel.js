@@ -1,211 +1,64 @@
 const db = require('../config/db');
-const crypto = require('crypto');
 
 const TicketModel = {
-  async create({ title, description, type, category = 'Other', priority = 'Low', client_id, sla_due_date }) {
-    if (db.isMock()) {
-      const data = db.getMockData();
-      
-      let nextNumber = 1001;
-      if (data.tickets.length > 0) {
-        const maxNum = Math.max(...data.tickets.map(t => t.ticket_number || 0));
-        nextNumber = maxNum >= 1000 ? maxNum + 1 : 1001;
-      }
-
-      const newTicket = {
-        id: `ticket-${crypto.randomBytes(8).toString('hex')}`,
-        ticket_number: nextNumber,
-        title: title.trim(),
-        description: description.trim(),
-        type: type,
-        status: 'Created',
-        priority: priority,
-        category: category,
-        client_id: client_id,
-        assignee_id: null,
-        sla_due_date: sla_due_date || null,
-        sla_breached: false,
-        feedback_rating: null,
-        feedback_comments: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      data.tickets.push(newTicket);
-      db.saveMockData(data);
-
-      // Return ticket details with client name (seeded client/admin)
-      const client = data.users.find(u => u.id === client_id);
-      return {
-        ...newTicket,
-        client_name: client ? client.name : 'Unknown',
-        client_email: client ? client.email : ''
-      };
-    }
-
+  /**
+   * Create a new ticket
+   */
+  async create({ title, description, category_id, priority = 'Low', created_by, sla_due_date }) {
     const query = `
-      INSERT INTO tickets (title, description, type, category, priority, client_id, sla_due_date)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO tickets (ticket_number, title, description, category_id, priority, status, created_by, sla_due_date)
+      VALUES (
+        'TKT-' || LPAD(NEXTVAL('ticket_number_seq')::TEXT, 6, '0'),
+        $1, $2, $3, $4, 'Open', $5, $6
+      )
       RETURNING *
     `;
-    const { rows } = await db.query(query, [title.trim(), description.trim(), type, category, priority, client_id, sla_due_date]);
-    
-    // Fetch with client details
+    const { rows } = await db.query(query, [title.trim(), description.trim(), category_id, priority, created_by, sla_due_date]);
     return this.findById(rows[0].id);
   },
 
+  /**
+   * Find ticket by ID with joined user and category details
+   */
   async findById(id) {
-    if (db.isMock()) {
-      const data = db.getMockData();
-      const ticket = data.tickets.find(t => t.id === id);
-      if (!ticket) return null;
-
-      const client = data.users.find(u => u.id === ticket.client_id);
-      const assignee = ticket.assignee_id ? data.users.find(u => u.id === ticket.assignee_id) : null;
-
-      return {
-        ...ticket,
-        client_name: client ? client.name : 'Unknown',
-        client_email: client ? client.email : '',
-        assignee_name: assignee ? assignee.name : null,
-        assignee_email: assignee ? assignee.email : null
-      };
-    }
-
     const query = `
       SELECT t.*, 
-             u1.name as client_name, u1.email as client_email,
-             u2.name as assignee_name, u2.email as assignee_email
+             u1.name AS created_by_name, u1.email AS created_by_email,
+             u2.name AS assigned_to_name, u2.email AS assigned_to_email,
+             tc.name AS category_name, tc.color AS category_color
       FROM tickets t
-      JOIN users u1 ON t.client_id = u1.id
-      LEFT JOIN users u2 ON t.assignee_id = u2.id
+      JOIN users u1 ON t.created_by = u1.id
+      LEFT JOIN users u2 ON t.assigned_to = u2.id
+      LEFT JOIN ticket_categories tc ON t.category_id = tc.id
       WHERE t.id = $1
     `;
     const { rows } = await db.query(query, [id]);
     return rows[0] || null;
   },
 
+  /**
+   * Get all tickets with filters, sorting, and pagination
+   */
   async getAll({
     search = '',
     status = '',
     priority = '',
-    type = '',
     category = '',
     assigneeId = '',
-    clientId = '',
+    createdBy = '',
     sortBy = 'created_at',
     sortOrder = 'DESC',
     page = 1,
     limit = 10
-  }) {
+  } = {}) {
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 10;
 
-    if (db.isMock()) {
-      const data = db.getMockData();
-      let filtered = [...data.tickets];
-
-      if (search) {
-        const term = search.toLowerCase().trim();
-        filtered = filtered.filter(t => 
-          t.title.toLowerCase().includes(term) || 
-          t.description.toLowerCase().includes(term) ||
-          String(t.ticket_number).includes(term)
-        );
-      }
-
-      if (status) {
-        filtered = filtered.filter(t => t.status === status);
-      }
-
-      if (priority) {
-        filtered = filtered.filter(t => t.priority === priority);
-      }
-
-      if (type) {
-        filtered = filtered.filter(t => t.type === type);
-      }
-
-      if (category) {
-        filtered = filtered.filter(t => t.category === category);
-      }
-
-      if (assigneeId) {
-        filtered = filtered.filter(t => t.assignee_id === assigneeId);
-      }
-
-      if (clientId) {
-        filtered = filtered.filter(t => t.client_id === clientId);
-      }
-
-      const total = filtered.length;
-
-      // Sort logic
-      const orderMultiplier = sortOrder.toUpperCase() === 'ASC' ? 1 : -1;
-      filtered.sort((a, b) => {
-        let fieldA, fieldB;
-        if (sortBy === 'ticket_number') {
-          fieldA = a.ticket_number;
-          fieldB = b.ticket_number;
-          return (fieldA - fieldB) * orderMultiplier;
-        } else if (sortBy === 'title') {
-          fieldA = a.title.toLowerCase();
-          fieldB = b.title.toLowerCase();
-        } else if (sortBy === 'status') {
-          fieldA = a.status.toLowerCase();
-          fieldB = b.status.toLowerCase();
-        } else if (sortBy === 'priority') {
-          // Custom priority weights
-          const weights = { Low: 1, Medium: 2, High: 3, Urgent: 4 };
-          fieldA = weights[a.priority] || 0;
-          fieldB = weights[b.priority] || 0;
-          return (fieldA - fieldB) * orderMultiplier;
-        } else {
-          // Default: created_at
-          fieldA = new Date(a.created_at || 0).getTime();
-          fieldB = new Date(b.created_at || 0).getTime();
-          return (fieldA - fieldB) * orderMultiplier;
-        }
-
-        if (fieldA < fieldB) return -1 * orderMultiplier;
-        if (fieldA > fieldB) return 1 * orderMultiplier;
-        return 0;
-      });
-
-      // Pagination
-      const offset = (pageNum - 1) * limitNum;
-      const paginated = filtered.slice(offset, offset + limitNum);
-
-      // Join client and assignee details
-      const ticketsMapped = paginated.map(t => {
-        const client = data.users.find(u => u.id === t.client_id);
-        const assignee = t.assignee_id ? data.users.find(u => u.id === t.assignee_id) : null;
-        return {
-          ...t,
-          client_name: client ? client.name : 'Unknown',
-          client_email: client ? client.email : '',
-          assignee_name: assignee ? assignee.name : null,
-          assignee_email: assignee ? assignee.email : null
-        };
-      });
-
-      return { tickets: ticketsMapped, total };
-    }
-
-    // PostgreSQL Implementation
-    let countQuery = `
-      SELECT COUNT(*) as count 
+    const baseJoin = `
       FROM tickets t
-      WHERE 1=1
-    `;
-    
-    let dataQuery = `
-      SELECT t.*, 
-             u1.name as client_name, u1.email as client_email,
-             u2.name as assignee_name, u2.email as assignee_email
-      FROM tickets t
-      JOIN users u1 ON t.client_id = u1.id
-      LEFT JOIN users u2 ON t.assignee_id = u2.id
+      JOIN users u1 ON t.created_by = u1.id
+      LEFT JOIN users u2 ON t.assigned_to = u2.id
+      LEFT JOIN ticket_categories tc ON t.category_id = tc.id
       WHERE 1=1
     `;
 
@@ -214,13 +67,11 @@ const TicketModel = {
 
     if (search) {
       params.push(`%${search.trim()}%`);
-      const searchIndex = params.length;
-      // Also match numeric ticket number if input is a number
-      const isNum = !isNaN(search.trim());
+      const isNum = !isNaN(search.trim()) && search.trim() !== '';
       if (isNum) {
-        whereClause += ` AND (t.title ILIKE $${searchIndex} OR t.description ILIKE $${searchIndex} OR t.ticket_number = ${parseInt(search.trim(), 10)})`;
+        whereClause += ` AND (t.title ILIKE $${params.length} OR t.description ILIKE $${params.length} OR t.ticket_number ILIKE $${params.length})`;
       } else {
-        whereClause += ` AND (t.title ILIKE $${searchIndex} OR t.description ILIKE $${searchIndex})`;
+        whereClause += ` AND (t.title ILIKE $${params.length} OR t.description ILIKE $${params.length} OR t.ticket_number ILIKE $${params.length})`;
       }
     }
 
@@ -234,84 +85,66 @@ const TicketModel = {
       whereClause += ` AND t.priority = $${params.length}`;
     }
 
-    if (type) {
-      params.push(type);
-      whereClause += ` AND t.type = $${params.length}`;
-    }
-
     if (category) {
       params.push(category);
-      whereClause += ` AND t.category = $${params.length}`;
+      whereClause += ` AND (tc.name = $${params.length} OR t.category_id::text = $${params.length})`;
     }
 
     if (assigneeId) {
       params.push(assigneeId);
-      whereClause += ` AND t.assignee_id = $${params.length}`;
+      whereClause += ` AND t.assigned_to = $${params.length}`;
     }
 
-    if (clientId) {
-      params.push(clientId);
-      whereClause += ` AND t.client_id = $${params.length}`;
+    if (createdBy) {
+      params.push(createdBy);
+      whereClause += ` AND t.created_by = $${params.length}`;
     }
 
-    // Run Count query
-    const countRes = await db.query(countQuery + whereClause, params);
+    // Count query
+    const countQuery = `SELECT COUNT(*) AS count ${baseJoin}${whereClause}`;
+    const countRes = await db.query(countQuery, params);
     const total = parseInt(countRes.rows[0].count, 10);
 
-    // Sorting fields mapping
+    // Sorting
     const allowedSortFields = {
       ticket_number: 't.ticket_number',
       title: 't.title',
       status: 't.status',
-      priority: `CASE t.priority 
-                  WHEN 'Low' THEN 1 
-                  WHEN 'Medium' THEN 2 
-                  WHEN 'High' THEN 3 
-                  WHEN 'Urgent' THEN 4 
-                  ELSE 0 END`,
-      created_at: 't.created_at'
+      priority: `CASE t.priority WHEN 'Low' THEN 1 WHEN 'Medium' THEN 2 WHEN 'High' THEN 3 WHEN 'Urgent' THEN 4 WHEN 'Critical' THEN 5 ELSE 0 END`,
+      created_at: 't.created_at',
+      updated_at: 't.updated_at'
     };
     const sortColumn = allowedSortFields[sortBy] || 't.created_at';
     const order = sortOrder.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
-    dataQuery += whereClause + ` ORDER BY ${sortColumn} ${order}`;
 
-    // Pagination limits
+    // Data query
+    const dataQuery = `
+      SELECT t.*, 
+             u1.name AS created_by_name, u1.email AS created_by_email,
+             u2.name AS assigned_to_name, u2.email AS assigned_to_email,
+             tc.name AS category_name, tc.color AS category_color
+      ${baseJoin}${whereClause}
+      ORDER BY ${sortColumn} ${order}
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `;
     const offset = (pageNum - 1) * limitNum;
-    params.push(limitNum);
-    dataQuery += ` LIMIT $${params.length}`;
-    params.push(offset);
-    dataQuery += ` OFFSET $${params.length}`;
+    const { rows } = await db.query(dataQuery, [...params, limitNum, offset]);
 
-    const { rows } = await db.query(dataQuery, params);
     return { tickets: rows, total };
   },
 
+  /**
+   * Update ticket fields
+   */
   async update(id, fields) {
-    if (db.isMock()) {
-      const data = db.getMockData();
-      const idx = data.tickets.findIndex(t => t.id === id);
-      if (idx === -1) return null;
-
-      const ticket = data.tickets[idx];
-      const updatableFields = ['status', 'priority', 'category', 'assignee_id', 'feedback_rating', 'feedback_comments', 'sla_due_date', 'sla_breached'];
-      
-      updatableFields.forEach(f => {
-        if (fields[f] !== undefined) {
-          ticket[f] = fields[f];
-        }
-      });
-
-      ticket.updated_at = new Date().toISOString();
-      db.saveMockData(data);
-
-      return this.findById(id);
-    }
-
-    // Dynamic SQL update builder
     const setClause = [];
     const params = [id];
-    const updatableFields = ['status', 'priority', 'category', 'assignee_id', 'feedback_rating', 'feedback_comments', 'sla_due_date', 'sla_breached'];
-    
+
+    const updatableFields = [
+      'status', 'priority', 'category_id', 'assigned_to',
+      'sla_due_date', 'sla_breached', 'due_date', 'closed_at'
+    ];
+
     updatableFields.forEach(f => {
       if (fields[f] !== undefined) {
         params.push(fields[f]);
@@ -333,30 +166,14 @@ const TicketModel = {
     return this.findById(id);
   },
 
+  /**
+   * Get comments for a ticket
+   */
   async getCommentsByTicketId(ticketId) {
-    if (db.isMock()) {
-      const data = db.getMockData();
-      const comments = data.ticket_comments.filter(c => c.ticket_id === ticketId);
-      
-      // Sort comments ASC (oldest first for message thread)
-      comments.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-
-      return comments.map(c => {
-        const user = data.users.find(u => u.id === c.user_id);
-        const role = user ? data.roles.find(r => r.id === user.role_id) : null;
-        return {
-          ...c,
-          user_name: user ? user.name : 'System User',
-          user_email: user ? user.email : '',
-          role_name: role ? role.name : 'User'
-        };
-      });
-    }
-
     const query = `
       SELECT tc.*, 
-             u.name as user_name, u.email as user_email,
-             r.name as role_name
+             u.name AS user_name, u.email AS user_email,
+             r.name AS role_name
       FROM ticket_comments tc
       JOIN users u ON tc.user_id = u.id
       JOIN roles r ON u.role_id = r.id
@@ -367,43 +184,22 @@ const TicketModel = {
     return rows;
   },
 
+  /**
+   * Add a comment to a ticket
+   */
   async addComment({ ticket_id, user_id, comment }) {
-    if (db.isMock()) {
-      const data = db.getMockData();
-      const newComment = {
-        id: `comment-${crypto.randomBytes(8).toString('hex')}`,
-        ticket_id,
-        user_id,
-        comment: comment.trim(),
-        created_at: new Date().toISOString()
-      };
-
-      data.ticket_comments.push(newComment);
-      db.saveMockData(data);
-
-      const user = data.users.find(u => u.id === user_id);
-      const role = user ? data.roles.find(r => r.id === user.role_id) : null;
-      return {
-        ...newComment,
-        user_name: user ? user.name : 'System User',
-        user_email: user ? user.email : '',
-        role_name: role ? role.name : 'User'
-      };
-    }
-
     const query = `
       INSERT INTO ticket_comments (ticket_id, user_id, comment)
       VALUES ($1, $2, $3)
       RETURNING *
     `;
     const { rows } = await db.query(query, [ticket_id, user_id, comment.trim()]);
-    
-    // Fetch comment with user details
     const commentId = rows[0].id;
+
     const fetchQuery = `
       SELECT tc.*, 
-             u.name as user_name, u.email as user_email,
-             r.name as role_name
+             u.name AS user_name, u.email AS user_email,
+             r.name AS role_name
       FROM ticket_comments tc
       JOIN users u ON tc.user_id = u.id
       JOIN roles r ON u.role_id = r.id
@@ -411,6 +207,34 @@ const TicketModel = {
     `;
     const detailRows = await db.query(fetchQuery, [commentId]);
     return detailRows.rows[0];
+  },
+
+  /**
+   * Get ticket attachments
+   */
+  async getAttachments(ticketId) {
+    const query = `
+      SELECT ta.*, u.name AS uploaded_by_name
+      FROM ticket_attachments ta
+      JOIN users u ON ta.uploaded_by = u.id
+      WHERE ta.ticket_id = $1
+      ORDER BY ta.uploaded_at DESC
+    `;
+    const { rows } = await db.query(query, [ticketId]);
+    return rows;
+  },
+
+  /**
+   * Add attachment to ticket
+   */
+  async addAttachment({ ticket_id, uploaded_by, file_name, file_path, file_size, mime_type }) {
+    const query = `
+      INSERT INTO ticket_attachments (ticket_id, uploaded_by, file_name, file_path, file_size, mime_type)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+    `;
+    const { rows } = await db.query(query, [ticket_id, uploaded_by, file_name, file_path, file_size, mime_type]);
+    return rows[0];
   }
 };
 

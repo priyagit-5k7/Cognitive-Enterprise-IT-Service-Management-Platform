@@ -24,7 +24,11 @@ const Login = () => {
       await login(email, password);
       navigate('/');
     } catch (err) {
-      setError(err.message || 'Invalid credentials');
+      if (err.name === 'TypeError' && err.message?.toLowerCase().includes('fetch')) {
+        setError('Cannot connect to the backend server. Please verify your internet connection or backend server status.');
+      } else {
+        setError(err.message || 'Invalid credentials');
+      }
     } finally {
       setSubmitting(false);
     }

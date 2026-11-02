@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, X, Clock, BookOpen, Ticket, User, MessageSquare, ExternalLink, Star, Loader2 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
+import { API_BASE } from '../config';
 
 const ENTITY_ICONS = {
   ticket: <Ticket size={14} className="text-indigo-400" />,

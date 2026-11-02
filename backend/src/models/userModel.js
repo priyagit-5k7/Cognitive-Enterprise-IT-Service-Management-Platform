@@ -38,7 +38,7 @@ const UserModel = {
       };
     }
     const query = `
-      SELECT u.id, u.name, u.email, u.role_id, u.is_active, u.status, u.created_at, u.updated_at,
+      SELECT u.id, u.name, u.email, u.role_id, u.is_active, u.status, u.specialization, u.department, u.created_at, u.updated_at,
              r.name as role_name, r.permissions
       FROM users u
       JOIN roles r ON u.role_id = r.id
@@ -48,7 +48,7 @@ const UserModel = {
     return rows[0] || null;
   },
 
-  async create({ name, email, passwordHash, roleId, status = 'Active' }) {
+  async create({ name, email, passwordHash, roleId, status = 'Active', specialization = null, department = null }) {
     if (db.isMock()) {
       const data = db.getMockData();
       const newUser = {
@@ -57,6 +57,8 @@ const UserModel = {
         email: email.toLowerCase().trim(),
         password_hash: passwordHash,
         role_id: roleId,
+        specialization: specialization || null,
+        department: department || null,
         is_active: status === 'Active',
         status: status,
         deleted_at: null,
@@ -70,15 +72,17 @@ const UserModel = {
         name: newUser.name,
         email: newUser.email,
         role_id: newUser.role_id,
+        specialization: newUser.specialization,
+        department: newUser.department,
         is_active: newUser.is_active,
         status: newUser.status,
         created_at: newUser.created_at
       };
     }
     const query = `
-      INSERT INTO users (name, email, password_hash, role_id, is_active, status, deleted_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NULL)
-      RETURNING id, name, email, role_id, is_active, status, created_at
+      INSERT INTO users (name, email, password_hash, role_id, is_active, status, specialization, department, deleted_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)
+      RETURNING id, name, email, role_id, is_active, status, specialization, department, created_at
     `;
     const { rows } = await db.query(query, [
       name.trim(),
@@ -86,12 +90,14 @@ const UserModel = {
       passwordHash,
       roleId,
       status === 'Active',
-      status
+      status,
+      specialization || null,
+      department || null
     ]);
     return rows[0];
   },
 
-  async update(id, { name, email, roleId, status }) {
+  async update(id, { name, email, roleId, status, specialization = null, department = null }) {
     if (db.isMock()) {
       const data = db.getMockData();
       const userIdx = data.users.findIndex(u => u.id === id);
@@ -100,6 +106,8 @@ const UserModel = {
       data.users[userIdx].email = email.toLowerCase().trim();
       data.users[userIdx].role_id = roleId;
       data.users[userIdx].status = status;
+      data.users[userIdx].specialization = specialization;
+      data.users[userIdx].department = department;
       data.users[userIdx].is_active = status === 'Active';
       data.users[userIdx].updated_at = new Date().toISOString();
       db.saveMockData(data);
@@ -108,6 +116,8 @@ const UserModel = {
         name: data.users[userIdx].name,
         email: data.users[userIdx].email,
         role_id: data.users[userIdx].role_id,
+        specialization: data.users[userIdx].specialization,
+        department: data.users[userIdx].department,
         is_active: data.users[userIdx].is_active,
         status: data.users[userIdx].status,
         updated_at: data.users[userIdx].updated_at
@@ -115,9 +125,9 @@ const UserModel = {
     }
     const query = `
       UPDATE users
-      SET name = $1, email = $2, role_id = $3, status = $4, is_active = $5, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $6 AND deleted_at IS NULL
-      RETURNING id, name, email, role_id, is_active, status, updated_at
+      SET name = $1, email = $2, role_id = $3, status = $4, is_active = $5, specialization = $6, department = $7, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $8 AND deleted_at IS NULL
+      RETURNING id, name, email, role_id, is_active, status, specialization, department, updated_at
     `;
     const { rows } = await db.query(query, [
       name.trim(),
@@ -125,6 +135,8 @@ const UserModel = {
       roleId,
       status,
       status === 'Active',
+      specialization || null,
+      department || null,
       id
     ]);
     return rows[0] || null;
@@ -155,26 +167,18 @@ const UserModel = {
       WHERE id = $3 AND deleted_at IS NULL
       RETURNING id, name, email, role_id, is_active, status, updated_at
     `;
-    const { rows } = await db.query(query, [status, status === 'Active', id]);
+    const { rows } = await db.query(query, [
+      status,
+      status === 'Active',
+      id
+    ]);
     return rows[0] || null;
   },
 
   async delete(id) {
     if (db.isMock()) {
       const data = db.getMockData();
-      const userIdx = data.users.findIndex(u => u.id === id && !u.deleted_at);
-      if (userIdx === -1) return null;
-      
-      const user = data.users[userIdx];
-      user.deleted_at = new Date().toISOString();
-      user.is_active = false;
-      user.status = 'Inactive';
-      user.email = `${user.email}.deleted_${Date.now()}`;
-      user.updated_at = new Date().toISOString();
-      
-      // Clean tokens
-      data.refresh_tokens = data.refresh_tokens.filter(t => t.user_id !== id);
-      data.password_resets = data.password_resets.filter(r => r.user_id !== id);
+      data.users = data.users.filter(u => u.id !== id);
       db.saveMockData(data);
       return { id };
     }
@@ -195,86 +199,16 @@ const UserModel = {
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 10;
     
-    if (db.isMock()) {
-      const data = db.getMockData();
-      let filtered = data.users.filter(u => !u.deleted_at);
-
-      if (search) {
-        const term = search.toLowerCase().trim();
-        filtered = filtered.filter(u => u.name.toLowerCase().includes(term) || u.email.toLowerCase().includes(term));
-      }
-
-      if (roleId) {
-        filtered = filtered.filter(u => u.role_id === roleId);
-      }
-
-      if (status) {
-        filtered = filtered.filter(u => (u.status || 'Active') === status);
-      }
-
-      const total = filtered.length;
-
-      // Sorting
-      const orderMultiplier = sortOrder.toUpperCase() === 'ASC' ? 1 : -1;
-      filtered.sort((a, b) => {
-        let fieldA, fieldB;
-        if (sortBy === 'role') {
-          const rA = data.roles.find(r => r.id === a.role_id);
-          const rB = data.roles.find(r => r.id === b.role_id);
-          fieldA = rA ? rA.name.toLowerCase() : '';
-          fieldB = rB ? rB.name.toLowerCase() : '';
-        } else if (sortBy === 'name') {
-          fieldA = a.name.toLowerCase();
-          fieldB = b.name.toLowerCase();
-        } else if (sortBy === 'email') {
-          fieldA = a.email.toLowerCase();
-          fieldB = b.email.toLowerCase();
-        } else if (sortBy === 'status') {
-          fieldA = (a.status || 'Active').toLowerCase();
-          fieldB = (b.status || 'Active').toLowerCase();
-        } else {
-          // Default: created_at
-          fieldA = new Date(a.created_at || 0).getTime();
-          fieldB = new Date(b.created_at || 0).getTime();
-          return (fieldA - fieldB) * orderMultiplier;
-        }
-        if (fieldA < fieldB) return -1 * orderMultiplier;
-        if (fieldA > fieldB) return 1 * orderMultiplier;
-        return 0;
-      });
-
-      // Pagination
-      const offset = (pageNum - 1) * limitNum;
-      const paginated = filtered.slice(offset, offset + limitNum);
-
-      // Join role name
-      const usersMapped = paginated.map(u => {
-        const role = data.roles.find(r => r.id === u.role_id);
-        return {
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          role_id: u.role_id,
-          is_active: u.is_active,
-          status: u.status || 'Active',
-          created_at: u.created_at,
-          updated_at: u.updated_at,
-          role_name: role ? role.name : 'Client'
-        };
-      });
-
-      return { users: usersMapped, total };
-    }
-    
-    // PostgreSQL Implementation
+    // PostgreSQL Implementation with live open ticket workloads
     let countQuery = `
       SELECT COUNT(*) as count 
       FROM users u 
       WHERE u.deleted_at IS NULL
     `;
     let dataQuery = `
-      SELECT u.id, u.name, u.email, u.role_id, u.is_active, u.status, u.created_at, u.updated_at,
-             r.name as role_name
+      SELECT u.id, u.name, u.email, u.role_id, u.is_active, u.status, u.specialization, u.department, u.created_at, u.updated_at,
+             r.name as role_name,
+             (SELECT COUNT(*) FROM tickets t WHERE t.assigned_to = u.id AND t.status NOT IN ('Closed', 'Resolved')) as open_tickets_count
       FROM users u
       JOIN roles r ON u.role_id = r.id
       WHERE u.deleted_at IS NULL
@@ -285,7 +219,7 @@ const UserModel = {
 
     if (search) {
       params.push(`%${search.trim()}%`);
-      whereClause += ` AND (u.name ILIKE $${params.length} OR u.email ILIKE $${params.length})`;
+      whereClause += ` AND (u.name ILIKE $${params.length} OR u.email ILIKE $${params.length} OR u.specialization ILIKE $${params.length})`;
     }
 
     if (roleId) {
@@ -307,6 +241,7 @@ const UserModel = {
       name: 'u.name',
       email: 'u.email',
       role: 'r.name',
+      specialization: 'u.specialization',
       status: 'u.status',
       created_at: 'u.created_at'
     };

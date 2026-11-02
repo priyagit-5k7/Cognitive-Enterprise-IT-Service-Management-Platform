@@ -20,7 +20,7 @@ exports.getSystemHealth = async (req, res) => {
       await db.query('SELECT 1');
       dbLatency = Date.now() - start;
       dbHealthy = true;
-    } catch {}
+    } catch { }
 
     const health = {
       status: dbHealthy ? 'healthy' : 'degraded',
@@ -68,7 +68,7 @@ exports.getMetrics = async (req, res) => {
         COUNT(*) FILTER (WHERE status='Resolved') AS resolved_tickets,
         COUNT(*) FILTER (WHERE status='Closed') AS closed_tickets,
         COUNT(*) FILTER (WHERE priority='Critical' OR priority='High') AS high_priority,
-        ROUND(AVG(EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600)::numeric, 2) AS avg_resolution_hours
+        ROUND(AVG(EXTRACT(EPOCH FROM (closed_at - created_at)) / 3600)::numeric, 2) AS avg_resolution_hours
       FROM tickets WHERE created_at > NOW() - INTERVAL '${interval}'
     `);
 
@@ -77,14 +77,20 @@ exports.getMetrics = async (req, res) => {
       WHERE created_at > NOW() - INTERVAL '${interval}'
     `);
 
-    const { rows: aiMetrics } = await db.query(`
-      SELECT
-        COUNT(*) AS total_ai_calls,
-        AVG(latency_ms) AS avg_latency_ms,
-        SUM(tokens_used) AS total_tokens,
-        COUNT(*) FILTER (WHERE success=TRUE) AS successful_calls
-      FROM ai_performance_metrics WHERE created_at > NOW() - INTERVAL '${interval}'
-    `);
+    let aiMetrics = [{ total_ai_calls: '0', avg_latency_ms: null, total_tokens: '0', successful_calls: '0' }];
+    try {
+      const { rows } = await db.query(`
+        SELECT
+          COUNT(*) AS total_ai_calls,
+          AVG(latency_ms) AS avg_latency_ms,
+          SUM(tokens_used) AS total_tokens,
+          COUNT(*) FILTER (WHERE success=TRUE) AS successful_calls
+        FROM ai_performance_metrics WHERE created_at > NOW() - INTERVAL '${interval}'
+      `);
+      aiMetrics = rows;
+    } catch (aiErr) {
+      console.warn('[MonitoringController] ai_performance_metrics query failed (non-fatal):', aiErr.message);
+    }
 
     const { rows: hourlyTickets } = await db.query(`
       SELECT DATE_TRUNC('hour', created_at) AS hour, COUNT(*) AS count
@@ -107,10 +113,12 @@ exports.getMetrics = async (req, res) => {
 
 exports.getAlerts = async (req, res) => {
   try {
+    // system_health_logs is used since system_alerts table is not in the schema
     const { rows } = await db.query(`
-      SELECT sa.*, u.name AS resolved_by_name FROM system_alerts sa
-      LEFT JOIN users u ON sa.resolved_by = u.id
-      ORDER BY sa.created_at DESC LIMIT 50
+      SELECT id, component AS alert_type, status AS severity,
+             details::text AS message, created_at, NULL AS resolved_at, FALSE AS is_resolved
+      FROM system_health_logs
+      ORDER BY created_at DESC LIMIT 50
     `);
     res.json({ alerts: rows });
   } catch (err) {
@@ -171,7 +179,7 @@ exports.getDatabaseStats = async (req, res) => {
     try {
       const { rows } = await db.query(`SELECT pg_size_pretty(pg_database_size(current_database())) AS size, pg_database_size(current_database()) AS size_bytes`);
       dbSizeResult = rows[0];
-    } catch {}
+    } catch { }
 
     res.json({ tables: stats, database: dbSizeResult });
   } catch (err) {

@@ -7,6 +7,8 @@ router.use(authenticate);
 
 // Provider info
 router.get('/provider', aiPlatformController.getProviderInfo);
+// Status alias (same as provider info)
+router.get('/status', aiPlatformController.getProviderInfo);
 
 // Conversations
 router.get('/conversations', aiPlatformController.getConversations);

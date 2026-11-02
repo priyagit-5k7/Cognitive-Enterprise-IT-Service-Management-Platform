@@ -58,12 +58,12 @@ const initMockFile = () => {
       refresh_tokens: [],
       password_resets: []
     };
-    
+
     // Hash default password for admin account
     const bcrypt = require('bcryptjs');
     const salt = bcrypt.genSaltSync(10);
     defaultData.users[0].password_hash = bcrypt.hashSync('adminpassword', salt);
-    
+
     fs.writeFileSync(mockFilePath, JSON.stringify(defaultData, null, 2));
   }
 };
@@ -80,49 +80,82 @@ const saveMockData = (data) => {
   fs.writeFileSync(mockFilePath, JSON.stringify(data, null, 2));
 };
 
-const testConnection = () => {
-  try {
-    pool = new Pool({
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432'),
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || 'postgres',
-      database: process.env.DB_NAME || 'smart_support_desk',
-      connectionTimeoutMillis: 2000,
-    });
-    
-    // Attempt a quick test query synchronously-ish or log on promise resolve
-    pool.query('SELECT 1')
-      .then(() => {
-        console.log('Successfully connected to PostgreSQL database.');
-      })
-      .catch((err) => {
-        console.warn('\n======================================================================');
-        console.warn('WARNING: Failed to connect to PostgreSQL database.');
-        console.warn(`Reason: ${err.message}`);
-        console.warn('FALLING BACK: Operating in Local JSON File Database mode (mock_db.json).');
-        console.warn('To use PostgreSQL, configure valid credentials in backend/.env and rerun npm run db:init');
-        console.warn('======================================================================\n');
-        useMock = true;
-        initMockFile();
-      });
-  } catch (err) {
-    useMock = true;
-    initMockFile();
+/**
+ * Initialize the PostgreSQL connection pool and verify connectivity.
+ * Returns a Promise that resolves when the connection is confirmed,
+ * or rejects if the database is unreachable.
+ *
+ * Call this once from server.js before starting DB-dependent services.
+ */
+const getPool = () => {
+  if (!pool) {
+    const databaseUrl = process.env.DATABASE_URL && process.env.DATABASE_URL.trim();
+    const hasDiscreteConfig = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME']
+      .every((name) => process.env[name] && process.env[name].trim());
+
+    if (process.env.NODE_ENV === 'production' && !databaseUrl && !hasDiscreteConfig) {
+      throw new Error(
+        '[DB] Missing production database configuration. Set DATABASE_URL or DB_HOST, DB_USER, DB_PASSWORD, and DB_NAME.'
+      );
+    }
+
+    const config = databaseUrl
+      ? {
+          connectionString: databaseUrl,
+          ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+          connectionTimeoutMillis: 10000,
+          idleTimeoutMillis: 30000,
+          max: 10,
+        }
+      : {
+          host: process.env.DB_HOST || 'localhost',
+          port: parseInt(process.env.DB_PORT || '5432'),
+          user: process.env.DB_USER || 'postgres',
+          password: process.env.DB_PASSWORD || 'postgres',
+          database: process.env.DB_NAME || 'smart_support_desk',
+          connectionTimeoutMillis: 10000,
+          idleTimeoutMillis: 30000,
+          max: 10,
+        };
+    pool = new Pool(config);
   }
+  return pool;
 };
 
-testConnection();
+const connect = () => {
+  return new Promise((resolve, reject) => {
+    const p = getPool();
+    p.query('SELECT 1')
+      .then(() => {
+        console.log('[DB] Successfully connected to PostgreSQL database.');
+        useMock = false;
+        resolve(p);
+      })
+      .catch((err) => {
+        console.error('\n======================================================================');
+        console.error('[DB] ERROR: Failed to connect to PostgreSQL database.');
+        console.error(`[DB] Reason: ${err.message}`);
+        console.error('[DB] Check DATABASE_URL or DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME.');
+        console.error('[DB] Ensure PostgreSQL service is running and the database exists.');
+        console.error('[DB] Run: npm run db:init  to initialize the schema.');
+        console.error('======================================================================\n');
+        useMock = false;
+        reject(err);
+      });
+  });
+};
 
 module.exports = {
   isMock: () => useMock,
   getMockData,
   saveMockData,
+  connect,
   query: (text, params) => {
     if (useMock) {
       throw new Error('Database pool query called while in mock mode.');
     }
-    return pool.query(text, params);
+    const p = getPool();
+    return p.query(text, params);
   },
-  pool,
+  get pool() { return getPool(); },
 };

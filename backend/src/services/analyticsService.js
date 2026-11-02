@@ -12,11 +12,11 @@ const AnalyticsService = {
       ? `AND t.created_at BETWEEN '${startDate}' AND '${endDate}'`
       : '';
 
-    const [ticketStats, slaStats, satisfactionStats, aiStats] = await Promise.all([
+    const [ticketStats, slaStats, aiStats] = await Promise.all([
       db.query(`
         SELECT
           COUNT(*) AS total_tickets,
-          COUNT(*) FILTER (WHERE status IN ('Created','Assigned','In Progress','Categorized','Prioritized')) AS open_tickets,
+          COUNT(*) FILTER (WHERE status IN ('Open','In Progress')) AS open_tickets,
           COUNT(*) FILTER (WHERE status = 'Resolved') AS resolved_tickets,
           COUNT(*) FILTER (WHERE status = 'Closed') AS closed_tickets,
           COUNT(*) FILTER (WHERE sla_breached = TRUE) AS sla_breaches,
@@ -31,12 +31,6 @@ const AnalyticsService = {
       `),
       db.query(`
         SELECT
-          ROUND(AVG(feedback_rating)::numeric, 2) AS avg_satisfaction,
-          COUNT(feedback_rating) AS feedback_count
-        FROM tickets t WHERE feedback_rating IS NOT NULL ${dateFilter}
-      `),
-      db.query(`
-        SELECT
           ROUND(AVG(confidence)::numeric, 2) AS avg_ai_confidence,
           COUNT(*) AS total_predictions
         FROM ai_predictions
@@ -46,7 +40,7 @@ const AnalyticsService = {
     return {
       tickets: ticketStats.rows[0],
       sla: slaStats.rows[0],
-      satisfaction: satisfactionStats.rows[0],
+      satisfaction: { avg_satisfaction: null, feedback_count: 0 },
       ai: aiStats.rows[0]
     };
   },
@@ -96,7 +90,6 @@ const AnalyticsService = {
         COUNT(t.id) AS assigned_tickets,
         COUNT(t.id) FILTER (WHERE t.status IN ('Resolved','Closed')) AS resolved_tickets,
         COUNT(t.id) FILTER (WHERE t.sla_breached = TRUE) AS sla_breaches,
-        ROUND(AVG(t.feedback_rating)::numeric, 2) AS avg_rating,
         ROUND(AVG(EXTRACT(EPOCH FROM (t.updated_at - t.created_at))/3600)::numeric, 2) AS avg_resolution_hours
       FROM users u
       LEFT JOIN tickets t ON t.assigned_to = u.id
@@ -116,10 +109,10 @@ const AnalyticsService = {
         COUNT(*) FILTER (WHERE status IN ('Resolved','Closed')) AS resolved,
         COUNT(*) FILTER (WHERE sla_breached = TRUE) AS sla_breaches
       FROM tickets
-      WHERE created_at >= NOW() - INTERVAL '${months} months'
+      WHERE created_at >= NOW() - ($1 || ' months')::interval
       GROUP BY date_trunc('month', created_at)
       ORDER BY month ASC
-    `);
+    `, [months]);
     return rows;
   },
 
@@ -130,10 +123,10 @@ const AnalyticsService = {
         COUNT(*) AS total,
         COUNT(*) FILTER (WHERE status IN ('Resolved','Closed')) AS resolved
       FROM tickets
-      WHERE created_at >= NOW() - INTERVAL '${weeks} weeks'
+      WHERE created_at >= NOW() - ($1 || ' weeks')::interval
       GROUP BY date_trunc('week', created_at)
       ORDER BY week ASC
-    `);
+    `, [weeks]);
     return rows;
   },
 
@@ -204,7 +197,7 @@ const AnalyticsService = {
           ? `AND t.created_at BETWEEN '${startDate}' AND '${endDate}'` : '';
         const { rows } = await db.query(`
           SELECT t.ticket_number, t.title, t.status, t.priority, t.created_at,
-            t.updated_at, t.sla_breached, t.feedback_rating,
+            t.updated_at, t.sla_breached,
             c.name AS category, u.name AS client, a.name AS assignee
           FROM tickets t
           LEFT JOIN ticket_categories c ON t.category_id = c.id

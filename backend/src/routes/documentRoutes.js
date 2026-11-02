@@ -11,9 +11,15 @@ const authenticate = require('../middlewares/authMiddleware');
 const checkPermission = require('../middlewares/rbacMiddleware');
 const documentController = require('../controllers/documentController');
 
-// Ensure uploads directory exists
-const uploadDir = path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+// Ensure uploads directory exists (safely falls back to /tmp/uploads in serverless environments)
+const os = require('os');
+let uploadDir = path.join(__dirname, '../../uploads');
+try {
+  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+} catch (e) {
+  uploadDir = path.join(os.tmpdir(), 'uploads');
+  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Activity, CPU, Database, Brain, Network, HardDrive, AlertTriangle, 
-  CheckCircle, PlayCircle, Clock, ShieldAlert, BarChart2 
+import {
+  Activity, Cpu, Database, Brain, Network, HardDrive, AlertTriangle,
+  CheckCircle, PlayCircle, Clock, ShieldAlert, BarChart2
 } from 'lucide-react';
 import api from '../services/api';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
@@ -133,7 +133,7 @@ const EnterpriseAiCommandCenter = () => {
                   </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-blue-600 h-2 rounded-full" style={{ width: \`\${(metrics.drift.data_drift.score / 1.0) * 100}%\` }}></div>
+                  <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${(metrics.drift.data_drift.score / 1.0) * 100}%` }}></div>
                 </div>
               </div>
               <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800">
@@ -144,7 +144,7 @@ const EnterpriseAiCommandCenter = () => {
                 <p className="text-sm text-red-600 dark:text-red-400 mt-2">
                   {metrics.drift.recommendation}
                 </p>
-                <button 
+                <button
                   onClick={() => handleTrainModel('classification')}
                   disabled={training}
                   className="mt-3 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-sm transition-colors"

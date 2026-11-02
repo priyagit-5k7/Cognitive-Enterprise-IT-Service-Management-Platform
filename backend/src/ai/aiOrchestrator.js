@@ -42,11 +42,20 @@ async function analyzeTicket(ticket) {
     // Phase 28 & 29: RAG and Semantic Search for KB/Resolution
     const ragResponse = await aiGatewayService.ragGenerate(title, description);
     const suggestedResolution = ragResponse ? ragResponse.generated_response : 'Please review manually.';
-    const estimatedResolutionTime = mlPriority ? \`\${mlPriority.estimated_resolution_time_hrs} hours\` : 'Unknown';
+    const estimatedResolutionTime = mlPriority ? `${mlPriority.estimated_resolution_time_hrs} hours` : 'Unknown';
 
-    // Phase 26: AI Engineer Recommendation
-    const routingResult = await aiGatewayService.recommendEngineer({ ticket_id: ticketId, description });
-    const recommendedEngineerId = null; // Could map routingResult.best_engineer.id to PG UUID if it existed
+    // Phase 26: AI Engineer Recommendation via local recommendation service
+    let recommendedEngineerId = null;
+    let engineerRecs = null;
+    try {
+      const recResult = await recommendEngineer(predictedCategory, created_by);
+      if (recResult && recResult.engineer) {
+        recommendedEngineerId = recResult.engineer.id;
+      }
+      engineerRecs = recResult ? recResult.recommendations : [];
+    } catch (recErr) {
+      console.warn('Local engineer recommendation fallback failed:', recErr.message);
+    }
 
     // 7. Find similar tickets (Phase 28 vector search)
     const semanticResult = await aiGatewayService.semanticSearch(combinedText);
@@ -117,13 +126,24 @@ async function getPrediction(ticketId) {
     const result = await db.query(
       `SELECT ap.*,
         u.name AS recommended_engineer_name,
-        u.email AS recommended_engineer_email
+        u.email AS recommended_engineer_email,
+        u.specialization AS recommended_engineer_specialization
       FROM ai_predictions ap
       LEFT JOIN users u ON ap.recommended_engineer = u.id
       WHERE ap.ticket_id = $1`,
       [ticketId]
     );
-    return result.rows[0] || null;
+    const pred = result.rows[0] || null;
+    if (pred && pred.predicted_category) {
+      try {
+        const { recommendEngineer } = require('./engineerRecommendationService');
+        const recResult = await recommendEngineer(pred.predicted_category);
+        pred.recommendations = recResult.recommendations || [];
+      } catch (recErr) {
+        pred.recommendations = [];
+      }
+    }
+    return pred;
   } catch (err) {
     console.error(`Failed to retrieve AI prediction for ticket ${ticketId}:`, err.message);
     return null;

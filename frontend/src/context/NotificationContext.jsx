@@ -1,11 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
+import { API_BASE, SOCKET_URL } from '../config';
 
 const NotificationContext = createContext(null);
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
 
 export const NotificationProvider = ({ children }) => {
   const { user, token } = useAuth();

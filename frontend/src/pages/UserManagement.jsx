@@ -1,9 +1,17 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { 
-  Search, UserPlus, Edit2, Trash2, X, Check, Shield, Eye,
+  Search, UserPlus, Edit2, Trash2, X, Check, Shield, Eye, Wrench, Ticket,
   ArrowUp, ArrowDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight 
 } from 'lucide-react';
+
+const CATEGORY_SPECIALIZATIONS = [
+  'Network & Internet',
+  'Software Issues',
+  'Hardware Support',
+  'Account & Access',
+  'General Request'
+];
 
 const UserManagement = () => {
   const { authFetch, API_BASE } = useContext(AuthContext);
@@ -35,7 +43,9 @@ const UserManagement = () => {
     email: '',
     password: '',
     roleId: '',
-    status: 'Active'
+    status: 'Active',
+    specialization: '',
+    department: ''
   });
 
   const [submitting, setSubmitting] = useState(false);
@@ -89,16 +99,23 @@ const UserManagement = () => {
       setSortBy(field);
       setSortOrder('ASC');
     }
-    setPage(1); // Reset to first page on sort
+    setPage(1);
+  };
+
+  const isEngineerRole = (roleId) => {
+    const r = roles.find(role => role.id === roleId);
+    return r && r.name === 'Support Engineer';
   };
 
   const handleOpenAddModal = () => {
     setFormData({
       name: '',
       email: '',
-      password: 'password123', // default secure seeding
+      password: 'Password@123',
       roleId: roles.length > 0 ? roles[0].id : '',
-      status: 'Active'
+      status: 'Active',
+      specialization: '',
+      department: ''
     });
     setError('');
     setShowAddModal(true);
@@ -109,9 +126,11 @@ const UserManagement = () => {
     setFormData({
       name: user.name,
       email: user.email,
-      password: '', // do not display password
+      password: '',
       roleId: user.role_id,
-      status: user.status || 'Active'
+      status: user.status || 'Active',
+      specialization: user.specialization || '',
+      department: user.department || ''
     });
     setError('');
     setShowEditModal(true);
@@ -135,7 +154,9 @@ const UserManagement = () => {
           email: formData.email,
           password: formData.password,
           roleId: formData.roleId,
-          status: formData.status
+          status: formData.status,
+          specialization: formData.specialization || null,
+          department: formData.department || null
         })
       });
 
@@ -165,7 +186,9 @@ const UserManagement = () => {
           name: formData.name,
           email: formData.email,
           roleId: formData.roleId,
-          status: formData.status
+          status: formData.status,
+          specialization: formData.specialization || null,
+          department: formData.department || null
         })
       });
 
@@ -183,24 +206,6 @@ const UserManagement = () => {
     }
   };
 
-  const handleDeleteUser = async (userId) => {
-    if (!window.confirm('Are you sure you want to delete this user? This will soft-delete their profile.')) return;
-    try {
-      setError('');
-      const res = await authFetch(`${API_BASE}/users/${userId}`, {
-        method: 'DELETE'
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to delete user');
-
-      setSuccess('User soft-deleted successfully');
-      fetchData();
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
   const handleStatusChange = async (userId, newStatus) => {
     try {
       setError('');
@@ -210,9 +215,27 @@ const UserManagement = () => {
         body: JSON.stringify({ status: newStatus })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to update status');
+      if (!res.ok) throw new Error(data.message || 'Status update failed');
+      
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: newStatus, is_active: newStatus === 'Active' } : u));
+      setSuccess(`User status changed to ${newStatus}`);
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
-      setSuccess(`User status updated to ${newStatus}`);
+  const handleDeleteUser = async (userId) => {
+    if (!window.confirm('Are you sure you want to delete this user account?')) return;
+    try {
+      setError('');
+      const res = await authFetch(`${API_BASE}/users/${userId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Delete user failed');
+
+      setSuccess('User removed from active directory');
       fetchData();
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -222,24 +245,20 @@ const UserManagement = () => {
 
   const getStatusBadgeClass = (status) => {
     switch (status) {
-      case 'Active':
-        return 'badge-active';
-      case 'Suspended':
-        return ''; // Handled by style inline below
-      default:
-        return 'badge-inactive';
+      case 'Active': return 'status-success';
+      case 'Suspended': return 'status-warning';
+      case 'Inactive': return 'status-error';
+      default: return 'status-default';
     }
   };
 
   const getStatusBadgeStyle = (status) => {
-    if (status === 'Suspended') {
-      return {
-        background: 'rgba(245, 158, 11, 0.15)',
-        color: 'rgb(245, 158, 11)',
-        border: '1px solid rgba(245, 158, 11, 0.2)'
-      };
+    switch (status) {
+      case 'Active': return { backgroundColor: 'var(--status-success-bg)', color: 'var(--status-success)', border: '1px solid var(--status-success)' };
+      case 'Suspended': return { backgroundColor: 'var(--status-warning-bg)', color: 'var(--status-warning)', border: '1px solid var(--status-warning)' };
+      case 'Inactive': return { backgroundColor: 'var(--status-error-bg)', color: 'var(--status-error)', border: '1px solid var(--status-error)' };
+      default: return {};
     }
-    return {};
   };
 
   const renderSortIcon = (field) => {
@@ -247,16 +266,15 @@ const UserManagement = () => {
     return sortOrder === 'ASC' ? <ArrowUp size={14} style={{ marginLeft: '4px' }} /> : <ArrowDown size={14} style={{ marginLeft: '4px' }} />;
   };
 
-  // Pagination helper items
   const showingFrom = (page - 1) * limit + 1;
   const showingTo = Math.min(page * limit, pagination.total);
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h2 style={{ fontSize: '28px', fontWeight: 700, fontFamily: 'Outfit' }}>User Console</h2>
-          <p style={{ color: 'var(--text-muted)' }}>Manage user directories, access levels, and active profiles.</p>
+          <h2 style={{ fontSize: '28px', fontWeight: 700, fontFamily: 'Outfit' }}>User & Engineer Directory</h2>
+          <p style={{ color: 'var(--text-muted)' }}>Manage user directories, IT support engineer specializations, and access levels.</p>
         </div>
         <button className="btn btn-primary" style={{ width: 'auto' }} onClick={handleOpenAddModal}>
           <UserPlus size={18} />
@@ -275,7 +293,7 @@ const UserManagement = () => {
             <input
               type="text"
               className="form-control"
-              placeholder="Search by name or email..."
+              placeholder="Search by name, email, or specialization..."
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
               style={{ paddingLeft: '40px' }}
@@ -335,11 +353,12 @@ const UserManagement = () => {
                     <th onClick={() => handleSort('role')} style={{ cursor: 'pointer' }}>
                       <span style={{ display: 'flex', alignItems: 'center' }}>Role {renderSortIcon('role')}</span>
                     </th>
+                    <th onClick={() => handleSort('specialization')} style={{ cursor: 'pointer' }}>
+                      <span style={{ display: 'flex', alignItems: 'center' }}>Specialization {renderSortIcon('specialization')}</span>
+                    </th>
+                    <th>Workload</th>
                     <th onClick={() => handleSort('status')} style={{ cursor: 'pointer' }}>
                       <span style={{ display: 'flex', alignItems: 'center' }}>Status {renderSortIcon('status')}</span>
-                    </th>
-                    <th onClick={() => handleSort('created_at')} style={{ cursor: 'pointer' }}>
-                      <span style={{ display: 'flex', alignItems: 'center' }}>Created {renderSortIcon('created_at')}</span>
                     </th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
@@ -363,6 +382,47 @@ const UserManagement = () => {
                         </div>
                       </td>
                       <td>
+                        {u.role_name === 'Support Engineer' ? (
+                          u.specialization ? (
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                              color: 'var(--color-primary)',
+                              fontSize: '12px',
+                              fontWeight: 600
+                            }}>
+                              <Wrench size={12} />
+                              {u.specialization}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>General</span>
+                          )
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>—</span>
+                        )}
+                      </td>
+                      <td>
+                        {u.role_name === 'Support Engineer' ? (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: parseInt(u.open_tickets_count || 0, 10) > 3 ? 'var(--status-warning)' : 'var(--text-main)'
+                          }}>
+                            <Ticket size={13} style={{ color: 'var(--color-primary)' }} />
+                            {u.open_tickets_count || 0} open
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>—</span>
+                        )}
+                      </td>
+                      <td>
                         <select
                           value={u.status || 'Active'}
                           onChange={(e) => handleStatusChange(u.id, e.target.value)}
@@ -377,13 +437,10 @@ const UserManagement = () => {
                           }}
                           className={`badge ${getStatusBadgeClass(u.status)}`}
                         >
-                          <option value="Active" style={{ background: 'var(--bg-main)', color: 'var(--text-main)' }}>Active</option>
-                          <option value="Suspended" style={{ background: 'var(--bg-main)', color: 'var(--text-main)' }}>Suspended</option>
-                          <option value="Inactive" style={{ background: 'var(--bg-main)', color: 'var(--text-main)' }}>Inactive</option>
+                          <option value="Active" style={{ background: 'var(--bg-surface)', color: 'var(--text-main)' }}>Active</option>
+                          <option value="Suspended" style={{ background: 'var(--bg-surface)', color: 'var(--text-main)' }}>Suspended</option>
+                          <option value="Inactive" style={{ background: 'var(--bg-surface)', color: 'var(--text-main)' }}>Inactive</option>
                         </select>
-                      </td>
-                      <td style={{ color: 'var(--text-muted)', fontSize: '13px' }}>
-                        {new Date(u.created_at).toLocaleDateString()}
                       </td>
                       <td>
                         <div className="action-buttons" style={{ justifyContent: 'flex-end' }}>
@@ -495,7 +552,7 @@ const UserManagement = () => {
         <div className="modal-overlay">
           <div className="modal-content">
             <div className="panel-header" style={{ padding: '20px 24px', margin: 0 }}>
-              <h3 className="panel-title">Add New User</h3>
+              <h3 className="panel-title">Add New User / Engineer</h3>
               <button className="icon-btn" onClick={() => setShowAddModal(false)}><X size={18} /></button>
             </div>
             <form onSubmit={handleAddSubmit}>
@@ -505,7 +562,7 @@ const UserManagement = () => {
                   <input
                     type="text"
                     className="form-control"
-                    placeholder="Jane Doe"
+                    placeholder="e.g. Arjun Kumar"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     required
@@ -519,7 +576,7 @@ const UserManagement = () => {
                   <input
                     type="email"
                     className="form-control"
-                    placeholder="jane.doe@company.com"
+                    placeholder="e.g. arjun.network@desk.com"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     required
@@ -557,6 +614,38 @@ const UserManagement = () => {
                   </select>
                 </div>
 
+                {/* Show specialization if Support Engineer */}
+                {isEngineerRole(formData.roleId) && (
+                  <div className="form-group">
+                    <label className="form-label">Category Specialization</label>
+                    <select
+                      className="form-control"
+                      value={formData.specialization}
+                      onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
+                      style={{ paddingLeft: '12px' }}
+                      disabled={submitting}
+                    >
+                      <option value="">Select Specialization...</option>
+                      {CATEGORY_SPECIALIZATIONS.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="form-group">
+                  <label className="form-label">Department</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. Infrastructure, IT Operations"
+                    value={formData.department}
+                    onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                    style={{ paddingLeft: '14px' }}
+                    disabled={submitting}
+                  />
+                </div>
+
                 <div className="form-group">
                   <label className="form-label">Status</label>
                   <select
@@ -589,7 +678,7 @@ const UserManagement = () => {
         <div className="modal-overlay">
           <div className="modal-content">
             <div className="panel-header" style={{ padding: '20px 24px', margin: 0 }}>
-              <h3 className="panel-title">Edit User Profile</h3>
+              <h3 className="panel-title">Edit Account Profile</h3>
               <button className="icon-btn" onClick={() => setShowEditModal(false)}><X size={18} /></button>
             </div>
             <form onSubmit={handleEditSubmit}>
@@ -634,6 +723,36 @@ const UserManagement = () => {
                       <option key={r.id} value={r.id}>{r.name}</option>
                     ))}
                   </select>
+                </div>
+
+                {isEngineerRole(formData.roleId) && (
+                  <div className="form-group">
+                    <label className="form-label">Category Specialization</label>
+                    <select
+                      className="form-control"
+                      value={formData.specialization}
+                      onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
+                      style={{ paddingLeft: '12px' }}
+                      disabled={submitting}
+                    >
+                      <option value="">Select Specialization...</option>
+                      {CATEGORY_SPECIALIZATIONS.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="form-group">
+                  <label className="form-label">Department</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={formData.department}
+                    onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                    style={{ paddingLeft: '14px' }}
+                    disabled={submitting}
+                  />
                 </div>
 
                 <div className="form-group">
@@ -699,57 +818,39 @@ const UserManagement = () => {
                   </div>
                 </div>
 
-                <div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Created At</div>
-                  <div style={{ fontSize: '15px', fontWeight: 500, marginTop: '4px' }}>
-                    {new Date(selectedUser.created_at).toLocaleString()}
+                {selectedUser.specialization && (
+                  <div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Category Specialization</div>
+                    <div style={{ fontSize: '15px', fontWeight: 600, marginTop: '4px', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Wrench size={16} />
+                      {selectedUser.specialization}
+                    </div>
                   </div>
+                )}
+
+                {selectedUser.role_name === 'Support Engineer' && (
+                  <div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Current Open Workload</div>
+                    <div style={{ fontSize: '15px', fontWeight: 600, marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Ticket size={16} style={{ color: 'var(--color-primary)' }} />
+                      {selectedUser.open_tickets_count || 0} active tickets
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Department</div>
+                  <div style={{ fontSize: '15px', fontWeight: 500, marginTop: '4px' }}>{selectedUser.department || 'Not Assigned'}</div>
                 </div>
 
                 <div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Last Updated</div>
-                  <div style={{ fontSize: '15px', fontWeight: 500, marginTop: '4px' }}>
-                    {selectedUser.updated_at ? new Date(selectedUser.updated_at).toLocaleString() : 'N/A'}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600, marginBottom: '8px' }}>Role Permissions Matrix</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {selectedUser.permissions && selectedUser.permissions.length > 0 ? (
-                    selectedUser.permissions.map(p => (
-                      <span key={p} style={{
-                        background: 'var(--bg-card)',
-                        color: 'var(--text-main)',
-                        border: '1px solid var(--border-color)',
-                        padding: '4px 8px',
-                        borderRadius: '4px',
-                        fontSize: '12px',
-                        fontWeight: '500'
-                      }}>
-                        {p}
-                      </span>
-                    ))
-                  ) : (
-                    <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic' }}>No custom permissions assigned</span>
-                  )}
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Registration Date</div>
+                  <div style={{ fontSize: '15px', fontWeight: 500, marginTop: '4px' }}>{new Date(selectedUser.created_at).toLocaleDateString()}</div>
                 </div>
               </div>
             </div>
-            <div className="modal-footer" style={{ borderTop: '1px solid var(--border-color)' }}>
-              <button type="button" className="btn btn-secondary" style={{ width: 'auto' }} onClick={() => setShowDetailsModal(false)}>Close</button>
-              <button 
-                type="button" 
-                className="btn btn-primary" 
-                style={{ width: 'auto' }} 
-                onClick={() => {
-                  setShowDetailsModal(false);
-                  handleOpenEditModal(selectedUser);
-                }}
-              >
-                Edit Account
-              </button>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" style={{ width: 'auto' }} onClick={() => setShowDetailsModal(false)}>Close</button>
             </div>
           </div>
         </div>

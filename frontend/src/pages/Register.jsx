@@ -36,7 +36,11 @@ const Register = () => {
         navigate('/login');
       }, 2000);
     } catch (err) {
-      setError(err.message || 'Registration failed');
+      if (err.name === 'TypeError' && err.message?.toLowerCase().includes('fetch')) {
+        setError('Cannot connect to the backend server. Please verify your internet connection or backend server status.');
+      } else {
+        setError(err.message || 'Registration failed');
+      }
     } finally {
       setSubmitting(false);
     }

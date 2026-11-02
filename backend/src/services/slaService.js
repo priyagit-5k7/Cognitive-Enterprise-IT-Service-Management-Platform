@@ -3,11 +3,21 @@ const emailService = require('./emailService');
 
 class SLAService {
   /**
-   * Fetch all active SLA policies and cache them (in-memory for speed, assuming rarely changes)
+   * Fetch all active SLA policies and cache them (in-memory for speed, assuming rarely changes).
+   * NOTE: Do NOT call this in the constructor. It must be called explicitly after the database
+   * connection has been confirmed ready (see cronService.start() → slaService.loadPolicies()).
    */
   constructor() {
     this.policies = {};
-    this.refreshPolicies();
+    // Policies are NOT loaded here — call loadPolicies() explicitly after DB connects.
+  }
+
+  /**
+   * Explicitly load SLA policies from the database.
+   * Called by cronService.start() after the database is confirmed ready.
+   */
+  async loadPolicies() {
+    await this.refreshPolicies();
   }
 
   async refreshPolicies() {
@@ -53,17 +63,17 @@ class SLAService {
         WHERE status NOT IN ('Closed', 'Resolved')
           AND sla_due_date < NOW()
           AND sla_breached = FALSE
-        RETURNING id, ticket_number, title, assigned_to, priority, assignee_id
+        RETURNING id, ticket_number, title, assigned_to, priority
       `);
 
       if (result.rowCount > 0) {
         console.log(`[SLA Service] Detected and marked ${result.rowCount} SLA breaches.`);
-        
+
         // Phase 6: Trigger emails for each breach
         for (const ticket of result.rows) {
-          if (ticket.assignee_id) {
+          if (ticket.assigned_to) {
             // Find assignee email
-            const userRes = await db.query('SELECT email FROM users WHERE id = $1', [ticket.assignee_id]);
+            const userRes = await db.query('SELECT email FROM users WHERE id = $1', [ticket.assigned_to]);
             if (userRes.rowCount > 0) {
               emailService.sendSlaBreachAlert(userRes.rows[0].email, ticket.ticket_number, ticket.title, ticket.priority);
             }
